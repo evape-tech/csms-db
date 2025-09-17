@@ -194,7 +194,7 @@ CREATE TABLE `users` (
   `createdAt` datetime NOT NULL COMMENT '建立時間',
   `updatedAt` datetime NOT NULL COMMENT '更新時間',
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 插入初始資料
 INSERT INTO `users` (`email`, `password`, `role`, `createdAt`, `updatedAt`) VALUES
@@ -237,6 +237,32 @@ CREATE TABLE `transactions` (
   KEY `idx_end_time` (`end_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+--
+-- Table structure for table `billing_channels`
+--
+DROP TABLE IF EXISTS `billing_channels`;
+CREATE TABLE `billing_channels` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `name` VARCHAR(50) NOT NULL COMMENT '支付方式名稱 (例: 信用卡, LinePay, 街口)',
+  `code` VARCHAR(30) NOT NULL UNIQUE COMMENT '支付代碼 (例: credit_card, linepay, jkopay)',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '是否啟用 (0=停用,1=啟用)',
+  `config` JSON DEFAULT NULL COMMENT '渠道配置 (API key, Merchant ID 等)',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_billing_channels_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+INSERT INTO `billing_channels` (`name`, `code`, `status`, `config`)
+VALUES
+('信用卡', 'credit_card', 1, NULL),
+('RFID', 'rfid', 1, NULL),
+('Line Pay', 'linepay', 1, NULL)
+ON DUPLICATE KEY UPDATE
+  `name` = VALUES(`name`),
+  `status` = VALUES(`status`),
+  `config` = VALUES(`config`),
+  `updatedAt` = CURRENT_TIMESTAMP;
 
 --
 -- Table structure for table `billing_records`
@@ -283,7 +309,8 @@ CREATE TABLE `billing_records` (
   KEY `idx_start_time` (`start_time`),
   KEY `idx_invoice_number` (`invoice_number`),
   CONSTRAINT `fk_billing_records_tariff_id` FOREIGN KEY (`tariff_id`) REFERENCES `tariffs` (`id`),
-  CONSTRAINT `fk_billing_records_transaction_ref` FOREIGN KEY (`transaction_ref`) REFERENCES `transactions` (`id`)
+  CONSTRAINT `fk_billing_records_transaction_ref` FOREIGN KEY (`transaction_ref`) REFERENCES `transactions` (`id`),
+  CONSTRAINT `fk_billing_records_payment_method` FOREIGN KEY (`payment_method`) REFERENCES `billing_channels` (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --

@@ -384,6 +384,50 @@ CREATE INDEX IX_transactions_start_time ON dbo.transactions(start_time);
 CREATE INDEX IX_transactions_end_time ON dbo.transactions(end_time);
 GO
 
+-- Table: billing_channels
+IF OBJECT_ID(N'dbo.billing_channels', N'U') IS NOT NULL
+    DROP TABLE dbo.billing_channels;
+GO
+
+CREATE TABLE dbo.billing_channels (
+    id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    name NVARCHAR(50) NOT NULL,          -- 支付方式名稱
+    code NVARCHAR(30) NOT NULL UNIQUE,   -- 支付代碼
+    status TINYINT NOT NULL DEFAULT 1,   -- 是否啟用 (0=停用,1=啟用)
+    config NVARCHAR(MAX) NULL,           -- 渠道配置(JSON或其他格式)
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE()
+);
+GO
+
+-- 添加欄位描述
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','billing_channels','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','支付方式名稱', 'SCHEMA','dbo','TABLE','billing_channels','COLUMN','name';
+EXEC sp_addextendedproperty 'MS_Description','支付代碼', 'SCHEMA','dbo','TABLE','billing_channels','COLUMN','code';
+EXEC sp_addextendedproperty 'MS_Description','是否啟用 (0=停用,1=啟用)', 'SCHEMA','dbo','TABLE','billing_channels','COLUMN','status';
+EXEC sp_addextendedproperty 'MS_Description','渠道配置(JSON)', 'SCHEMA','dbo','TABLE','billing_channels','COLUMN','config';
+EXEC sp_addextendedproperty 'MS_Description','建立時間', 'SCHEMA','dbo','TABLE','billing_channels','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','billing_channels','COLUMN','updatedAt';
+GO
+
+-- Migration-safe 插入初始資料
+MERGE dbo.billing_channels AS target
+USING (VALUES
+    (N'信用卡', N'credit_card', 1, NULL),
+    (N'RFID', N'rfid', 1, NULL),
+    (N'Line Pay', N'linepay', 1, NULL)
+) AS source (name, code, status, config)
+ON target.code = source.code
+WHEN MATCHED THEN 
+    UPDATE SET 
+        target.name = source.name,
+        target.status = source.status,
+        target.config = source.config,
+        target.updatedAt = GETDATE()
+WHEN NOT MATCHED THEN
+    INSERT (name, code, status, config, createdAt, updatedAt)
+    VALUES (source.name, source.code, source.status, source.config, GETDATE(), GETDATE());
+GO
 
 
 -- Table: billing_records
@@ -425,6 +469,7 @@ CREATE TABLE dbo.billing_records (
     updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     CONSTRAINT FK_billing_records_tariff_id FOREIGN KEY (tariff_id) REFERENCES tariffs(id),
     CONSTRAINT FK_billing_records_transaction_ref FOREIGN KEY (transaction_ref) REFERENCES transactions(id)
+    CONSTRAINT FK_billing_records_payment_method FOREIGN KEY (payment_method) REFERENCES billing_channels(code)
 );
 GO
 
@@ -469,6 +514,7 @@ CREATE INDEX IX_billing_records_status ON dbo.billing_records(status);
 CREATE INDEX IX_billing_records_start_time ON dbo.billing_records(start_time);
 CREATE INDEX IX_billing_records_invoice_number ON dbo.billing_records(invoice_number);
 GO
+
 
 /****** Table: cp_logs ******/
 IF OBJECT_ID(N'dbo.cp_logs', N'U') IS NOT NULL
