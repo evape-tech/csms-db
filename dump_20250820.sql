@@ -188,24 +188,29 @@ CREATE TABLE `guns` (
 DROP TABLE IF EXISTS `users`;
 CREATE TABLE `users` (
   `id` int NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `uuid` varchar(36) DEFAULT NULL COMMENT '用戶UUID',
   `email` varchar(255) DEFAULT NULL COMMENT '用戶Email',
   `password` varchar(255) DEFAULT NULL COMMENT '用戶密碼',
   `role` varchar(255) DEFAULT NULL COMMENT '用戶角色',
   `createdAt` datetime NOT NULL COMMENT '建立時間',
   `updatedAt` datetime NOT NULL COMMENT '更新時間',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_users_uuid` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 插入初始資料
 INSERT INTO `users` (`email`, `password`, `role`, `createdAt`, `updatedAt`) VALUES
 ('evape@gmail.com', '123456', 'admin', '2023-12-26 12:07:19', '2023-12-26 12:07:19');
 
+-- 生成現有用戶的 UUID
+UPDATE `users` SET `uuid` = UUID() WHERE `uuid` IS NULL;
+
 
 --
--- Table structure for table `transactions`
+-- Table structure for table `charging_transactions`
 --
-DROP TABLE IF EXISTS `transactions`;
-CREATE TABLE `transactions` (
+DROP TABLE IF EXISTS `charging_transactions`;
+CREATE TABLE `charging_transactions` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
   `transaction_id` varchar(50) NOT NULL UNIQUE COMMENT '交易ID',
   `start_time` datetime(0) NOT NULL COMMENT '開始時間',
@@ -213,8 +218,8 @@ CREATE TABLE `transactions` (
   `cpid` varchar(255) NOT NULL COMMENT '充電樁ID',
   `cpsn` varchar(255) NOT NULL COMMENT '充電樁序號',
   `connector_id` int NOT NULL COMMENT '接頭ID',
-  `user_id` varchar(100) DEFAULT NULL COMMENT '用戶ID',
-  `id_tag` varchar(20) NOT NULL COMMENT '用戶ID標籤',
+  `user_id` varchar(36) DEFAULT NULL COMMENT '用戶UUID',
+  `id_tag` varchar(20) NOT NULL COMMENT '用戶ID標籤 or rfid',
   `meter_start` decimal(10,3) DEFAULT NULL COMMENT '開始電表讀值',
   `meter_stop` decimal(10,3) DEFAULT NULL COMMENT '結束電表讀值',
   `energy_consumed` decimal(10,3) DEFAULT NULL COMMENT '消耗電量(kWh)',
@@ -234,7 +239,8 @@ CREATE TABLE `transactions` (
   KEY `idx_id_tag` (`id_tag`),
   KEY `idx_status` (`status`),
   KEY `idx_start_time` (`start_time`),
-  KEY `idx_end_time` (`end_time`)
+  KEY `idx_end_time` (`end_time`),
+  CONSTRAINT `fk_charging_transactions_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
@@ -290,7 +296,7 @@ CREATE TABLE `billing_records` (
   `payment_method` VARCHAR(50) DEFAULT NULL COMMENT '付款方式',
   `payment_reference` VARCHAR(100) DEFAULT NULL COMMENT '付款參考號',
   `payment_time` DATETIME DEFAULT NULL COMMENT '付款時間',
-  `user_id` VARCHAR(100) DEFAULT NULL COMMENT '用戶ID',
+  `user_id` VARCHAR(36) DEFAULT NULL COMMENT '用戶UUID',
   `id_tag` VARCHAR(20) NOT NULL COMMENT '用戶ID標籤',
   `cpid` VARCHAR(255) NOT NULL COMMENT '充電樁ID',
   `cpsn` VARCHAR(255) NOT NULL COMMENT '充電樁序號',
@@ -309,8 +315,85 @@ CREATE TABLE `billing_records` (
   KEY `idx_start_time` (`start_time`),
   KEY `idx_invoice_number` (`invoice_number`),
   CONSTRAINT `fk_billing_records_tariff_id` FOREIGN KEY (`tariff_id`) REFERENCES `tariffs` (`id`),
-  CONSTRAINT `fk_billing_records_transaction_ref` FOREIGN KEY (`transaction_ref`) REFERENCES `transactions` (`id`),
-  CONSTRAINT `fk_billing_records_payment_method` FOREIGN KEY (`payment_method`) REFERENCES `billing_channels` (`code`)
+  CONSTRAINT `fk_billing_records_transaction_ref` FOREIGN KEY (`transaction_ref`) REFERENCES `charging_transactions` (`id`),
+  CONSTRAINT `fk_billing_records_payment_method` FOREIGN KEY (`payment_method`) REFERENCES `billing_channels` (`code`),
+  CONSTRAINT `fk_billing_records_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `user_wallets`
+--
+DROP TABLE IF EXISTS `user_wallets`;
+CREATE TABLE `user_wallets` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '用戶UUID',
+  `balance` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '錢包餘額',
+  `currency` VARCHAR(3) NOT NULL DEFAULT 'TWD' COMMENT '貨幣',
+  `status` ENUM('ACTIVE','SUSPENDED','CLOSED') NOT NULL DEFAULT 'ACTIVE' COMMENT '錢包狀態',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_wallet` (`user_id`),
+  KEY `idx_status` (`status`),
+  CONSTRAINT `fk_user_wallets_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `rfid_cards`
+--
+
+DROP TABLE IF EXISTS `rfid_cards`;
+CREATE TABLE `rfid_cards` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `card_number` VARCHAR(50) NOT NULL UNIQUE COMMENT 'RFID卡號',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '綁定用戶UUID',
+  `card_type` VARCHAR(20) NOT NULL DEFAULT 'RFID' COMMENT '卡類型',
+  `status` ENUM('ACTIVE','SUSPENDED','LOST','EXPIRED','BLOCKED') NOT NULL DEFAULT 'ACTIVE' COMMENT '卡片狀態',
+  `issued_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '發卡時間',
+  `last_used_at` DATETIME DEFAULT NULL COMMENT '最後使用時間',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_card_number` (`card_number`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`),
+  CONSTRAINT `fk_rfid_cards_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `wallet_transactions`
+--
+
+DROP TABLE IF EXISTS `wallet_transactions`;
+CREATE TABLE `wallet_transactions` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '用戶UUID',
+  `wallet_id` INT UNSIGNED NOT NULL COMMENT '錢包ID',
+  `transaction_type` ENUM('DEPOSIT','WITHDRAWAL','PAYMENT','REFUND','ADJUSTMENT') NOT NULL COMMENT '交易類型',
+  `amount` DECIMAL(10,2) NOT NULL COMMENT '交易金額',
+  `balance_before` DECIMAL(10,2) NOT NULL COMMENT '交易前餘額',
+  `balance_after` DECIMAL(10,2) NOT NULL COMMENT '交易後餘額',
+  `billing_record_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '關聯計費記錄ID',
+  `charging_transaction_id` VARCHAR(50) DEFAULT NULL COMMENT '關聯充電交易ID',
+  `payment_method` VARCHAR(50) DEFAULT NULL COMMENT '支付方式',
+  `payment_reference` VARCHAR(100) DEFAULT NULL COMMENT '支付參考號',
+  `description` VARCHAR(255) DEFAULT NULL COMMENT '交易描述',
+  `status` ENUM('PENDING','COMPLETED','FAILED','CANCELLED') NOT NULL DEFAULT 'COMPLETED' COMMENT '交易狀態',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_wallet_id` (`wallet_id`),
+  KEY `idx_transaction_type` (`transaction_type`),
+  KEY `idx_billing_record_id` (`billing_record_id`),
+  KEY `idx_charging_transaction_id` (`charging_transaction_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_created_at` (`createdAt`),
+  CONSTRAINT `fk_wallet_transactions_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`),
+  CONSTRAINT `fk_wallet_transactions_wallet` FOREIGN KEY (`wallet_id`) REFERENCES `user_wallets` (`id`),
+  CONSTRAINT `fk_wallet_transactions_billing` FOREIGN KEY (`billing_record_id`) REFERENCES `billing_records` (`id`),
+  CONSTRAINT `fk_wallet_transactions_charging_transaction` FOREIGN KEY (`charging_transaction_id`) REFERENCES `charging_transactions` (`transaction_id`),
+  CONSTRAINT `fk_wallet_transactions_payment_method` FOREIGN KEY (`payment_method`) REFERENCES `billing_channels` (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
@@ -344,3 +427,14 @@ CREATE TABLE `cp_logs` (
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- Dump completed on 2025-08-20  0:39:10
+
+DELIMITER //
+CREATE TRIGGER `generate_uuid` BEFORE INSERT ON `users`
+FOR EACH ROW
+BEGIN
+  IF NEW.`uuid` IS NULL THEN
+    SET NEW.`uuid` = UUID();
+  END IF;
+END;
+//
+DELIMITER ;

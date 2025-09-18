@@ -284,6 +284,7 @@ GO
 
 CREATE TABLE dbo.users (
     id INT IDENTITY(7,1) NOT NULL PRIMARY KEY,
+    uuid NVARCHAR(36) NULL,
     email NVARCHAR(255) NULL,
     password NVARCHAR(255) NULL,
     role NVARCHAR(255) NULL,
@@ -293,11 +294,24 @@ CREATE TABLE dbo.users (
 GO
 
 EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','users','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','用戶UUID', 'SCHEMA','dbo','TABLE','users','COLUMN','uuid';
 EXEC sp_addextendedproperty 'MS_Description','用戶Email', 'SCHEMA','dbo','TABLE','users','COLUMN','email';
 EXEC sp_addextendedproperty 'MS_Description','密碼', 'SCHEMA','dbo','TABLE','users','COLUMN','password';
 EXEC sp_addextendedproperty 'MS_Description','角色', 'SCHEMA','dbo','TABLE','users','COLUMN','role';
 EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','users','COLUMN','createdAt';
 EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','users','COLUMN','updatedAt';
+GO
+
+-- 創建觸發器生成 UUID
+CREATE TRIGGER TR_users_generate_uuid
+ON dbo.users
+AFTER INSERT
+AS
+BEGIN
+    UPDATE dbo.users
+    SET uuid = NEWID()
+    WHERE id IN (SELECT id FROM inserted WHERE uuid IS NULL);
+END;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.users WHERE email = N'evape@gmail.com')
@@ -307,12 +321,12 @@ BEGIN
 END
 GO
 
-/****** Table: transactions ******/
-IF OBJECT_ID(N'dbo.transactions', N'U') IS NOT NULL
-    DROP TABLE dbo.transactions;
+/****** Table: charging_transactions ******/
+IF OBJECT_ID(N'dbo.charging_transactions', N'U') IS NOT NULL
+    DROP TABLE dbo.charging_transactions;
 GO
 
-CREATE TABLE dbo.transactions (
+CREATE TABLE dbo.charging_transactions (
  id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     transaction_id NVARCHAR(50) NOT NULL UNIQUE,
     start_time DATETIME2(0) NOT NULL,
@@ -324,7 +338,7 @@ CREATE TABLE dbo.transactions (
     connector_id INT NOT NULL,
 
     -- 用戶識別
-    user_id NVARCHAR(100) NULL,
+    user_id NVARCHAR(36) NULL,
     id_tag NVARCHAR(20) NOT NULL,
 
     -- 電表數據
@@ -348,40 +362,41 @@ CREATE TABLE dbo.transactions (
 
     -- 時間戳
     createdAt DATETIME2(0) NOT NULL,
-    updatedAt DATETIME2(0) NOT NULL
+    updatedAt DATETIME2(0) NOT NULL,
+    CONSTRAINT FK_charging_transactions_user_uuid FOREIGN KEY (user_id) REFERENCES dbo.users(uuid)
 );
 GO
 
-EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','transactions','COLUMN','id';
-EXEC sp_addextendedproperty 'MS_Description','交易編號', 'SCHEMA','dbo','TABLE','transactions','COLUMN','transaction_id';
-EXEC sp_addextendedproperty 'MS_Description','交易開始時間', 'SCHEMA','dbo','TABLE','transactions','COLUMN','start_time';
-EXEC sp_addextendedproperty 'MS_Description','交易結束時間', 'SCHEMA','dbo','TABLE','transactions','COLUMN','end_time';
-EXEC sp_addextendedproperty 'MS_Description','充電樁ID', 'SCHEMA','dbo','TABLE','transactions','COLUMN','cpid';
-EXEC sp_addextendedproperty 'MS_Description','充電樁序號', 'SCHEMA','dbo','TABLE','transactions','COLUMN','cpsn';
-EXEC sp_addextendedproperty 'MS_Description','充電槍ID', 'SCHEMA','dbo','TABLE','transactions','COLUMN','connector_id';
-EXEC sp_addextendedproperty 'MS_Description','用戶ID', 'SCHEMA','dbo','TABLE','transactions','COLUMN','user_id';
-EXEC sp_addextendedproperty 'MS_Description','身份識別ID Tag', 'SCHEMA','dbo','TABLE','transactions','COLUMN','id_tag';
-EXEC sp_addextendedproperty 'MS_Description','電表起始數值', 'SCHEMA','dbo','TABLE','transactions','COLUMN','meter_start';
-EXEC sp_addextendedproperty 'MS_Description','電表結束數值', 'SCHEMA','dbo','TABLE','transactions','COLUMN','meter_stop';
-EXEC sp_addextendedproperty 'MS_Description','消耗電量', 'SCHEMA','dbo','TABLE','transactions','COLUMN','energy_consumed';
-EXEC sp_addextendedproperty 'MS_Description','當前功率(kW)', 'SCHEMA','dbo','TABLE','transactions','COLUMN','current_power';
-EXEC sp_addextendedproperty 'MS_Description','當前電壓(V)', 'SCHEMA','dbo','TABLE','transactions','COLUMN','current_voltage';
-EXEC sp_addextendedproperty 'MS_Description','當前電流(A)', 'SCHEMA','dbo','TABLE','transactions','COLUMN','current_current';
-EXEC sp_addextendedproperty 'MS_Description','最後電表更新時間', 'SCHEMA','dbo','TABLE','transactions','COLUMN','last_meter_update';
-EXEC sp_addextendedproperty 'MS_Description','充電時長(秒)', 'SCHEMA','dbo','TABLE','transactions','COLUMN','charging_duration';
-EXEC sp_addextendedproperty 'MS_Description','交易狀態', 'SCHEMA','dbo','TABLE','transactions','COLUMN','status';
-EXEC sp_addextendedproperty 'MS_Description','交易停止原因', 'SCHEMA','dbo','TABLE','transactions','COLUMN','stop_reason';
-EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','transactions','COLUMN','createdAt';
-EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','transactions','COLUMN','updatedAt';
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','交易編號', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','transaction_id';
+EXEC sp_addextendedproperty 'MS_Description','交易開始時間', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','start_time';
+EXEC sp_addextendedproperty 'MS_Description','交易結束時間', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','end_time';
+EXEC sp_addextendedproperty 'MS_Description','充電樁ID', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','cpid';
+EXEC sp_addextendedproperty 'MS_Description','充電樁序號', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','cpsn';
+EXEC sp_addextendedproperty 'MS_Description','充電槍ID', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','connector_id';
+EXEC sp_addextendedproperty 'MS_Description','用戶UUID', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','user_id';
+EXEC sp_addextendedproperty 'MS_Description','身份識別ID Tag', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','id_tag';
+EXEC sp_addextendedproperty 'MS_Description','電表起始數值', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','meter_start';
+EXEC sp_addextendedproperty 'MS_Description','電表結束數值', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','meter_stop';
+EXEC sp_addextendedproperty 'MS_Description','消耗電量', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','energy_consumed';
+EXEC sp_addextendedproperty 'MS_Description','當前功率(kW)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','current_power';
+EXEC sp_addextendedproperty 'MS_Description','當前電壓(V)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','current_voltage';
+EXEC sp_addextendedproperty 'MS_Description','當前電流(A)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','current_current';
+EXEC sp_addextendedproperty 'MS_Description','最後電表更新時間', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','last_meter_update';
+EXEC sp_addextendedproperty 'MS_Description','充電時長(秒)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','charging_duration';
+EXEC sp_addextendedproperty 'MS_Description','交易狀態', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','status';
+EXEC sp_addextendedproperty 'MS_Description','交易停止原因', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','stop_reason';
+EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','updatedAt';
 GO
 
-CREATE INDEX IX_transactions_transaction_id ON dbo.transactions(transaction_id);
-CREATE INDEX IX_transactions_cpid ON dbo.transactions(cpid);
-CREATE INDEX IX_transactions_cpsn ON dbo.transactions(cpsn);
-CREATE INDEX IX_transactions_id_tag ON dbo.transactions(id_tag);
-CREATE INDEX IX_transactions_status ON dbo.transactions(status);
-CREATE INDEX IX_transactions_start_time ON dbo.transactions(start_time);
-CREATE INDEX IX_transactions_end_time ON dbo.transactions(end_time);
+CREATE INDEX IX_charging_transactions_transaction_id ON dbo.charging_transactions(transaction_id);
+CREATE INDEX IX_charging_transactions_cpid ON dbo.charging_transactions(cpid);
+CREATE INDEX IX_charging_transactions_cpsn ON dbo.charging_transactions(cpsn);
+CREATE INDEX IX_charging_transactions_id_tag ON dbo.charging_transactions(id_tag);
+CREATE INDEX IX_charging_transactions_status ON dbo.charging_transactions(status);
+CREATE INDEX IX_charging_transactions_start_time ON dbo.charging_transactions(start_time);
+CREATE INDEX IX_charging_transactions_end_time ON dbo.charging_transactions(end_time);
 GO
 
 -- Table: billing_channels
@@ -457,7 +472,7 @@ CREATE TABLE dbo.billing_records (
     payment_method NVARCHAR(50) NULL,
     payment_reference NVARCHAR(100) NULL,
     payment_time DATETIME2(0) NULL,
-    user_id NVARCHAR(100) NULL,
+    user_id NVARCHAR(36) NULL,
     id_tag NVARCHAR(20) NOT NULL,
     cpid NVARCHAR(255) NOT NULL,
     cpsn NVARCHAR(255) NOT NULL,
@@ -468,14 +483,15 @@ CREATE TABLE dbo.billing_records (
     createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     CONSTRAINT FK_billing_records_tariff_id FOREIGN KEY (tariff_id) REFERENCES tariffs(id),
-    CONSTRAINT FK_billing_records_transaction_ref FOREIGN KEY (transaction_ref) REFERENCES transactions(id)
-    CONSTRAINT FK_billing_records_payment_method FOREIGN KEY (payment_method) REFERENCES billing_channels(code)
+    CONSTRAINT FK_billing_records_transaction_ref FOREIGN KEY (transaction_ref) REFERENCES charging_transactions(id),
+    CONSTRAINT FK_billing_records_payment_method FOREIGN KEY (payment_method) REFERENCES billing_channels(code),
+    CONSTRAINT FK_billing_records_user_uuid FOREIGN KEY (user_id) REFERENCES dbo.users(uuid)
 );
 GO
 
 EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','id';
 EXEC sp_addextendedproperty 'MS_Description','交易編號', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','transaction_id';
-EXEC sp_addextendedproperty 'MS_Description','交易參照ID(transactions.id)', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','transaction_ref';
+EXEC sp_addextendedproperty 'MS_Description','交易參照ID(charging_transactions.id)', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','transaction_ref';
 EXEC sp_addextendedproperty 'MS_Description','費率ID(tariffs.id)', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','tariff_id';
 EXEC sp_addextendedproperty 'MS_Description','套用價格', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','applied_price';
 EXEC sp_addextendedproperty 'MS_Description','消耗電量(kWh)', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','energy_consumed';
@@ -494,7 +510,7 @@ EXEC sp_addextendedproperty 'MS_Description','發票開立時間', 'SCHEMA','dbo
 EXEC sp_addextendedproperty 'MS_Description','支付方式', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','payment_method';
 EXEC sp_addextendedproperty 'MS_Description','支付參考編號', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','payment_reference';
 EXEC sp_addextendedproperty 'MS_Description','支付時間', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','payment_time';
-EXEC sp_addextendedproperty 'MS_Description','用戶ID', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','user_id';
+EXEC sp_addextendedproperty 'MS_Description','用戶UUID', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','user_id';
 EXEC sp_addextendedproperty 'MS_Description','身份識別ID Tag', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','id_tag';
 EXEC sp_addextendedproperty 'MS_Description','充電樁ID', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','cpid';
 EXEC sp_addextendedproperty 'MS_Description','充電樁序號', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','cpsn';
@@ -541,4 +557,118 @@ EXEC sp_addextendedproperty 'MS_Description','進出狀態', 'SCHEMA','dbo','TAB
 EXEC sp_addextendedproperty 'MS_Description','記錄時間', 'SCHEMA','dbo','TABLE','cp_logs','COLUMN','time';
 EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','cp_logs','COLUMN','createdAt';
 EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','cp_logs','COLUMN','updatedAt';
+GO
+
+-- 創建 user_wallets 表
+IF OBJECT_ID(N'dbo.user_wallets', N'U') IS NOT NULL
+    DROP TABLE dbo.user_wallets;
+GO
+
+CREATE TABLE dbo.user_wallets (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    user_id NVARCHAR(36) NOT NULL,
+    balance DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    currency NVARCHAR(3) NOT NULL DEFAULT 'TWD',
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_user_wallets_user_uuid FOREIGN KEY (user_id) REFERENCES dbo.users(uuid)
+);
+GO
+
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','用戶UUID', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','user_id';
+EXEC sp_addextendedproperty 'MS_Description','餘額', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','balance';
+EXEC sp_addextendedproperty 'MS_Description','貨幣', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','currency';
+EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','updatedAt';
+GO
+
+-- 創建 rfid_cards 表
+IF OBJECT_ID(N'dbo.rfid_cards', N'U') IS NOT NULL
+    DROP TABLE dbo.rfid_cards;
+GO
+
+CREATE TABLE dbo.rfid_cards (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    user_id NVARCHAR(36) NOT NULL,
+    card_number NVARCHAR(50) NOT NULL UNIQUE,
+    card_type NVARCHAR(20) NOT NULL DEFAULT 'RFID',
+    status NVARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE', 'LOST', 'BLOCKED')),
+    issued_at DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_rfid_cards_user_uuid FOREIGN KEY (user_id) REFERENCES dbo.users(uuid)
+);
+GO
+
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','用戶UUID', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','user_id';
+EXEC sp_addextendedproperty 'MS_Description','卡號', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','card_number';
+EXEC sp_addextendedproperty 'MS_Description','卡類型', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','card_type';
+EXEC sp_addextendedproperty 'MS_Description','狀態', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','status';
+EXEC sp_addextendedproperty 'MS_Description','發卡時間', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','issued_at';
+EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','updatedAt';
+GO
+
+-- 創建 wallet_transactions 表
+IF OBJECT_ID(N'dbo.wallet_transactions', N'U') IS NOT NULL
+    DROP TABLE dbo.wallet_transactions;
+GO
+
+CREATE TABLE dbo.wallet_transactions (
+    id BIGINT IDENTITY(1,1) PRIMARY KEY,
+    user_id NVARCHAR(36) NOT NULL,
+    wallet_id INT NOT NULL,
+    transaction_type NVARCHAR(20) NOT NULL CHECK (transaction_type IN ('DEPOSIT', 'WITHDRAWAL', 'PAYMENT', 'REFUND', 'ADJUSTMENT')),
+    amount DECIMAL(10,2) NOT NULL,
+    balance_before DECIMAL(10,2) NOT NULL,
+    balance_after DECIMAL(10,2) NOT NULL,
+    currency NVARCHAR(3) NOT NULL DEFAULT 'TWD',
+    description NVARCHAR(255) NULL,
+    billing_record_id BIGINT NULL,
+    charging_transaction_id VARCHAR(50) NULL,
+    reference_id NVARCHAR(100) NULL, -- 關聯的充電交易ID或其他參考ID
+    payment_method NVARCHAR(50) NULL,
+    status NVARCHAR(20) NOT NULL DEFAULT 'COMPLETED' CHECK (status IN ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLED')),
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_wallet_transactions_user_uuid FOREIGN KEY (user_id) REFERENCES dbo.users(uuid),
+    CONSTRAINT FK_wallet_transactions_wallet FOREIGN KEY (wallet_id) REFERENCES dbo.user_wallets(id),
+    CONSTRAINT FK_wallet_transactions_billing FOREIGN KEY (billing_record_id) REFERENCES dbo.billing_records(id),
+    CONSTRAINT FK_wallet_transactions_charging_transaction FOREIGN KEY (charging_transaction_id) REFERENCES dbo.charging_transactions(transaction_id),
+    CONSTRAINT FK_wallet_transactions_payment_method FOREIGN KEY (payment_method) REFERENCES dbo.billing_channels(code)
+);
+GO
+
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','用戶UUID', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','user_id';
+EXEC sp_addextendedproperty 'MS_Description','錢包ID', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','wallet_id';
+EXEC sp_addextendedproperty 'MS_Description','交易類型', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','transaction_type';
+EXEC sp_addextendedproperty 'MS_Description','金額', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','amount';
+EXEC sp_addextendedproperty 'MS_Description','交易前餘額', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','balance_before';
+EXEC sp_addextendedproperty 'MS_Description','交易後餘額', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','balance_after';
+EXEC sp_addextendedproperty 'MS_Description','貨幣', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','currency';
+EXEC sp_addextendedproperty 'MS_Description','描述', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','description';
+EXEC sp_addextendedproperty 'MS_Description','關聯計費記錄ID', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','billing_record_id';
+EXEC sp_addextendedproperty 'MS_Description','關聯充電交易ID', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','charging_transaction_id';
+EXEC sp_addextendedproperty 'MS_Description','參考ID', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','reference_id';
+EXEC sp_addextendedproperty 'MS_Description','支付方式', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','payment_method';
+EXEC sp_addextendedproperty 'MS_Description','狀態', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','status';
+EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','updatedAt';
+GO
+
+-- 為新表創建索引
+CREATE INDEX IX_user_wallets_user_id ON dbo.user_wallets(user_id);
+CREATE INDEX IX_rfid_cards_user_id ON dbo.rfid_cards(user_id);
+CREATE INDEX IX_rfid_cards_card_number ON dbo.rfid_cards(card_number);
+CREATE INDEX IX_rfid_cards_status ON dbo.rfid_cards(status);
+CREATE INDEX IX_wallet_transactions_user_id ON dbo.wallet_transactions(user_id);
+CREATE INDEX IX_wallet_transactions_wallet_id ON dbo.wallet_transactions(wallet_id);
+CREATE INDEX IX_wallet_transactions_transaction_type ON dbo.wallet_transactions(transaction_type);
+CREATE INDEX IX_wallet_transactions_billing_record_id ON dbo.wallet_transactions(billing_record_id);
+CREATE INDEX IX_wallet_transactions_charging_transaction_id ON dbo.wallet_transactions(charging_transaction_id);
+CREATE INDEX IX_wallet_transactions_status ON dbo.wallet_transactions(status);
+CREATE INDEX IX_wallet_transactions_createdAt ON dbo.wallet_transactions(createdAt);
 GO
