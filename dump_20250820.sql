@@ -194,7 +194,6 @@ CREATE TABLE `users` (
   `role` varchar(255) DEFAULT NULL COMMENT '用戶角色',
   `first_name` VARCHAR(50) NULL COMMENT '名',
   `last_name` VARCHAR(50) NULL COMMENT '姓',
-  `full_name` VARCHAR(100) GENERATED ALWAYS AS (CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) STORED COMMENT '全名',
   `phone` VARCHAR(20) NULL COMMENT '手機號碼',
   `date_of_birth` DATE NULL COMMENT '生日',
   `email_verified` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Email是否驗證',
@@ -466,6 +465,32 @@ CREATE TABLE `cp_logs` (
   `updatedAt` datetime DEFAULT NULL COMMENT '資料更新時間',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=837 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `operation_logs`
+--
+DROP TABLE IF EXISTS `operation_logs`;
+CREATE TABLE `operation_logs` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `user_id` VARCHAR(36) DEFAULT NULL COMMENT '操作用戶UUID',
+  `user_email` VARCHAR(255) DEFAULT NULL COMMENT '操作用戶Email',
+  `user_name` VARCHAR(100) DEFAULT NULL COMMENT '操作用戶名稱',
+  `action_type` ENUM('CREATE','UPDATE','DELETE','LOGIN','LOGOUT','EXPORT','IMPORT','APPROVE','REJECT','RESET') NOT NULL COMMENT '操作類型',
+  `entity_type` ENUM('USER','STATION','METER','GUN','TARIFF','TRANSACTION','BILLING','WALLET','RFID_CARD','PAYMENT_CHANNEL','SYSTEM_CONFIG') NOT NULL COMMENT '操作對象類型',
+  `entity_id` VARCHAR(100) DEFAULT NULL COMMENT '操作對象ID',
+  `entity_name` VARCHAR(255) DEFAULT NULL COMMENT '操作對象名稱',
+  `description` VARCHAR(500) DEFAULT NULL COMMENT '操作描述',
+  `status` ENUM('SUCCESS','FAILED') NOT NULL DEFAULT 'SUCCESS' COMMENT '操作狀態',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作時間',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_user_email` (`user_email`),
+  KEY `idx_action_type` (`action_type`),
+  KEY `idx_entity_type` (`entity_type`),
+  KEY `idx_created_at` (`createdAt`),
+  CONSTRAINT `fk_operation_logs_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 

@@ -290,7 +290,6 @@ CREATE TABLE dbo.users (
     role NVARCHAR(255) NULL,
     first_name NVARCHAR(50) NULL,
     last_name NVARCHAR(50) NULL,
-    full_name AS (COALESCE(first_name, N'') + N' ' + COALESCE(last_name, N'')) PERSISTED,
     phone NVARCHAR(20) NULL,
     date_of_birth DATE NULL,
     email_verified TINYINT NOT NULL DEFAULT 0,
@@ -313,7 +312,6 @@ EXEC sp_addextendedproperty 'MS_Description','角色', 'SCHEMA','dbo','TABLE','u
 -- 個人資訊欄位描述
 EXEC sp_addextendedproperty 'MS_Description','名', 'SCHEMA','dbo','TABLE','users','COLUMN','first_name';
 EXEC sp_addextendedproperty 'MS_Description','姓', 'SCHEMA','dbo','TABLE','users','COLUMN','last_name';
-EXEC sp_addextendedproperty 'MS_Description','全名', 'SCHEMA','dbo','TABLE','users','COLUMN','full_name';
 EXEC sp_addextendedproperty 'MS_Description','手機號碼', 'SCHEMA','dbo','TABLE','users','COLUMN','phone';
 EXEC sp_addextendedproperty 'MS_Description','生日', 'SCHEMA','dbo','TABLE','users','COLUMN','date_of_birth';
 -- 帳戶狀態欄位描述
@@ -756,4 +754,46 @@ CREATE INDEX IX_wallet_transactions_billing_record_id ON dbo.wallet_transactions
 CREATE INDEX IX_wallet_transactions_charging_transaction_id ON dbo.wallet_transactions(charging_transaction_id);
 CREATE INDEX IX_wallet_transactions_status ON dbo.wallet_transactions(status);
 CREATE INDEX IX_wallet_transactions_createdAt ON dbo.wallet_transactions(createdAt);
+GO
+
+-- 創建 operation_logs 表
+IF OBJECT_ID(N'dbo.operation_logs', N'U') IS NOT NULL
+    DROP TABLE dbo.operation_logs;
+GO
+
+CREATE TABLE dbo.operation_logs (
+    id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    user_id NVARCHAR(36) NULL,
+    user_email NVARCHAR(255) NULL,
+    user_name NVARCHAR(100) NULL,
+    action_type NVARCHAR(20) NOT NULL CHECK (action_type IN (N'CREATE', N'UPDATE', N'DELETE', N'LOGIN', N'LOGOUT', N'EXPORT', N'IMPORT', N'APPROVE', N'REJECT', N'RESET')),
+    entity_type NVARCHAR(20) NOT NULL CHECK (entity_type IN (N'USER', N'STATION', N'METER', N'GUN', N'TARIFF', N'TRANSACTION', N'BILLING', N'WALLET', N'RFID_CARD', N'PAYMENT_CHANNEL', N'SYSTEM_CONFIG')),
+    entity_id NVARCHAR(100) NULL,
+    entity_name NVARCHAR(255) NULL,
+    description NVARCHAR(500) NULL,
+    status NVARCHAR(10) NOT NULL DEFAULT N'SUCCESS' CHECK (status IN (N'SUCCESS', N'FAILED')),
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_operation_logs_user_uuid FOREIGN KEY (user_id) REFERENCES dbo.users(uuid) ON DELETE SET NULL
+);
+GO
+
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','操作用戶UUID', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','user_id';
+EXEC sp_addextendedproperty 'MS_Description','操作用戶Email', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','user_email';
+EXEC sp_addextendedproperty 'MS_Description','操作用戶名稱', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','user_name';
+EXEC sp_addextendedproperty 'MS_Description','操作類型', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','action_type';
+EXEC sp_addextendedproperty 'MS_Description','操作對象類型', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','entity_type';
+EXEC sp_addextendedproperty 'MS_Description','操作對象ID', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','entity_id';
+EXEC sp_addextendedproperty 'MS_Description','操作對象名稱', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','entity_name';
+EXEC sp_addextendedproperty 'MS_Description','操作描述', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','description';
+EXEC sp_addextendedproperty 'MS_Description','操作狀態', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','status';
+EXEC sp_addextendedproperty 'MS_Description','操作時間', 'SCHEMA','dbo','TABLE','operation_logs','COLUMN','createdAt';
+GO
+
+-- 為 operation_logs 表創建索引
+CREATE INDEX IX_operation_logs_user_id ON dbo.operation_logs(user_id);
+CREATE INDEX IX_operation_logs_user_email ON dbo.operation_logs(user_email);
+CREATE INDEX IX_operation_logs_action_type ON dbo.operation_logs(action_type);
+CREATE INDEX IX_operation_logs_entity_type ON dbo.operation_logs(entity_type);
+CREATE INDEX IX_operation_logs_created_at ON dbo.operation_logs(createdAt);
 GO

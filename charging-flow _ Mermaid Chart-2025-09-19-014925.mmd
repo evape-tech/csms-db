@@ -1,48 +1,38 @@
 ---
 config:
   layout: elk
+  look: neo
+  theme: neo
 ---
 flowchart TD
-    %% 開始
-    A(["開始充電"]) --> B[記錄 charging_transactions]
+    A(["開始充電請求"]) --> B{"用戶身份驗證"}
+    B -- RFID 卡 --> C[驗證 rfid_cards 身份]
+    C --> D[取得用戶 user_id]
+    B -- Vehicle ID --> D
+    D --> E[檢查 user_wallets 餘額]
+    E --> F{餘額是否足夠?}
+    F -- 足夠 --> G[記錄 charging_transactions]
+    G --> H[計算 billing_records]
+    H --> I[記錄 wallet_transactions 扣款]
+    I --> J([更新 billing_records 為 PAID])
+    F -- 不足 --> K[提示用戶儲值]
+    K --> L(["充電請求拒絕"])
 
-    %% 計費
-    B --> C[計算 billing_records]
+    M(["用戶主動儲值"]) --> N{儲值方式}
+    N -- 手動儲值 --> O[管理員手動增加餘額]
+    O --> Q[記錄 wallet_transactions DEPOSIT]
+    N -- 第三方支付 --> R[第三方 API 處理儲值]
+    R --> Q
+    Q --> S[更新 user_wallets 增加餘額]
+    S --> T([儲值完成，可用於支付])
 
-    %% 支付方式選擇
-    C --> D{"選擇支付方式"}
-
-    %% RFID 支付流程
-    D -- RFID 卡 --> E[驗證 rfid_cards]
-    E --> F[檢查 user_wallets 餘額]
-    F --> G[記錄 wallet_transactions 扣款]
-    G --> H([更新 billing_records 為 PAID])
-
-    %% 第三方支付流程
-    D -- 第三方支付 --> I{"支付類型"}
-
-    %% 即時支付
-    I -- 即時支付 --> J[第三方 API 扣款]
-    J --> K[記錄 wallet_transactions PAYMENT]
-    K --> L([更新 billing_records 為 PAID])
-
-    %% 儲值支付
-    I -- 儲值 --> M[第三方 API 儲值到錢包]
-    M --> N[記錄 wallet_transactions DEPOSIT]
-    N --> O[更新 user_wallets 增加餘額]
-    O --> P([儲值完成，可用於支付])
-
-    %% 獨立儲值流程
-    Q(["用戶主動儲值"]) --> R[第三方 API 處理儲值]
-    R --> S[記錄 wallet_transactions DEPOSIT]
-    S --> T[更新 user_wallets 增加餘額]
-
-    %% 樣式
     classDef process fill:#e1f5fe,stroke:#01579b,stroke-width:2px
     classDef decision fill:#fff3e0,stroke:#e65100,stroke-width:2px
     classDef database fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
     classDef terminator fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef warning fill:#ffebee,stroke:#c62828,stroke-width:2px
 
-    class A,B,C,E,F,G,J,K,M,N,O,R,S,T process
-    class D,I decision
-    class H,L,P,Q terminator
+    class C,D,E,G,H,I,O,R process
+    class B,F,N decision
+    class J,L,T terminator
+    class K warning
