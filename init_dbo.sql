@@ -284,10 +284,22 @@ GO
 
 CREATE TABLE dbo.users (
     id INT IDENTITY(7,1) NOT NULL PRIMARY KEY,
-    uuid NVARCHAR(36) NULL,
+    uuid NVARCHAR(36) NULL UNIQUE,
     email NVARCHAR(255) NULL,
     password NVARCHAR(255) NULL,
     role NVARCHAR(255) NULL,
+    first_name NVARCHAR(50) NULL,
+    last_name NVARCHAR(50) NULL,
+    full_name AS (COALESCE(first_name, N'') + N' ' + COALESCE(last_name, N'')) PERSISTED,
+    phone NVARCHAR(20) NULL,
+    date_of_birth DATE NULL,
+    email_verified TINYINT NOT NULL DEFAULT 0,
+    account_status NVARCHAR(20) NOT NULL DEFAULT N'ACTIVE' 
+        CHECK (account_status IN (N'ACTIVE', N'SUSPENDED', N'BLOCKED', N'PENDING')),
+    last_login_at DATETIME2(0) NULL,
+    login_count INT NOT NULL DEFAULT 0,
+    failed_login_attempts INT NOT NULL DEFAULT 0,
+    lockout_until DATETIME2(0) NULL,
     createdAt DATETIME2(0) NOT NULL,
     updatedAt DATETIME2(0) NOT NULL
 );
@@ -298,6 +310,19 @@ EXEC sp_addextendedproperty 'MS_Description','用戶UUID', 'SCHEMA','dbo','TABLE
 EXEC sp_addextendedproperty 'MS_Description','用戶Email', 'SCHEMA','dbo','TABLE','users','COLUMN','email';
 EXEC sp_addextendedproperty 'MS_Description','密碼', 'SCHEMA','dbo','TABLE','users','COLUMN','password';
 EXEC sp_addextendedproperty 'MS_Description','角色', 'SCHEMA','dbo','TABLE','users','COLUMN','role';
+-- 個人資訊欄位描述
+EXEC sp_addextendedproperty 'MS_Description','名', 'SCHEMA','dbo','TABLE','users','COLUMN','first_name';
+EXEC sp_addextendedproperty 'MS_Description','姓', 'SCHEMA','dbo','TABLE','users','COLUMN','last_name';
+EXEC sp_addextendedproperty 'MS_Description','全名', 'SCHEMA','dbo','TABLE','users','COLUMN','full_name';
+EXEC sp_addextendedproperty 'MS_Description','手機號碼', 'SCHEMA','dbo','TABLE','users','COLUMN','phone';
+EXEC sp_addextendedproperty 'MS_Description','生日', 'SCHEMA','dbo','TABLE','users','COLUMN','date_of_birth';
+-- 帳戶狀態欄位描述
+EXEC sp_addextendedproperty 'MS_Description','Email是否驗證', 'SCHEMA','dbo','TABLE','users','COLUMN','email_verified';
+EXEC sp_addextendedproperty 'MS_Description','帳戶狀態', 'SCHEMA','dbo','TABLE','users','COLUMN','account_status';
+EXEC sp_addextendedproperty 'MS_Description','最後登入時間', 'SCHEMA','dbo','TABLE','users','COLUMN','last_login_at';
+EXEC sp_addextendedproperty 'MS_Description','登入次數', 'SCHEMA','dbo','TABLE','users','COLUMN','login_count';
+EXEC sp_addextendedproperty 'MS_Description','失敗登入次數', 'SCHEMA','dbo','TABLE','users','COLUMN','failed_login_attempts';
+EXEC sp_addextendedproperty 'MS_Description','鎖定到期時間', 'SCHEMA','dbo','TABLE','users','COLUMN','lockout_until';
 EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','users','COLUMN','createdAt';
 EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','users','COLUMN','updatedAt';
 GO
@@ -311,14 +336,29 @@ BEGIN
     UPDATE dbo.users
     SET uuid = NEWID()
     WHERE id IN (SELECT id FROM inserted WHERE uuid IS NULL);
+    
+    -- 確保所有用戶都有UUID
+    IF EXISTS (SELECT 1 FROM dbo.users WHERE uuid IS NULL)
+    BEGIN
+        RAISERROR('UUID generation failed for some users', 16, 1);
+    END
 END;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.users WHERE email = N'evape@gmail.com')
 BEGIN
-    INSERT INTO dbo.users (email, password, role, createdAt, updatedAt)
-    VALUES (N'evape@gmail.com', N'123456', N'admin', GETDATE(), GETDATE());
+    INSERT INTO dbo.users (email, password, role, first_name, last_name, phone, date_of_birth, email_verified, account_status, createdAt, updatedAt)
+    VALUES (N'evape@gmail.com', N'123456', N'admin', N'Admin', N'User', N'0912345678', '1990-01-01', 1, N'ACTIVE', GETDATE(), GETDATE());
 END
+
+IF NOT EXISTS (SELECT 1 FROM dbo.users WHERE email = N'user@gmail.com')
+BEGIN
+    INSERT INTO dbo.users (email, password, role, first_name, last_name, phone, date_of_birth, email_verified, account_status, createdAt, updatedAt)
+    VALUES (N'user@gmail.com', N'123456', N'user', N'測試', N'用戶', N'0987654321', '1995-05-15', 1, N'ACTIVE', GETDATE(), GETDATE());
+END
+
+-- 確保所有現有用戶都有UUID
+UPDATE dbo.users SET uuid = NEWID() WHERE uuid IS NULL;
 GO
 
 /****** Table: charging_transactions ******/
@@ -390,7 +430,10 @@ EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TAB
 EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','updatedAt';
 GO
 
-CREATE INDEX IX_charging_transactions_transaction_id ON dbo.charging_transactions(transaction_id);
+CREATE INDEX IX_users_email ON dbo.users(email);
+CREATE INDEX IX_users_account_status ON dbo.users(account_status);
+CREATE INDEX IX_users_email_verified ON dbo.users(email_verified);
+CREATE INDEX IX_users_last_login_at ON dbo.users(last_login_at);
 CREATE INDEX IX_charging_transactions_cpid ON dbo.charging_transactions(cpid);
 CREATE INDEX IX_charging_transactions_cpsn ON dbo.charging_transactions(cpsn);
 CREATE INDEX IX_charging_transactions_id_tag ON dbo.charging_transactions(id_tag);
@@ -407,7 +450,7 @@ GO
 CREATE TABLE dbo.billing_channels (
     id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     name NVARCHAR(50) NOT NULL,          -- 支付方式名稱
-    code NVARCHAR(30) NOT NULL UNIQUE,   -- 支付代碼
+    code NVARCHAR(50) NOT NULL UNIQUE,   -- 支付代碼
     status TINYINT NOT NULL DEFAULT 1,   -- 是否啟用 (0=停用,1=啟用)
     config NVARCHAR(MAX) NULL,           -- 渠道配置(JSON或其他格式)
     createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
@@ -566,7 +609,7 @@ GO
 
 CREATE TABLE dbo.user_wallets (
     id INT IDENTITY(1,1) PRIMARY KEY,
-    user_id NVARCHAR(36) NOT NULL,
+    user_id NVARCHAR(36) NOT NULL UNIQUE,
     balance DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     currency NVARCHAR(3) NOT NULL DEFAULT 'TWD',
     createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
@@ -581,6 +624,14 @@ EXEC sp_addextendedproperty 'MS_Description','餘額', 'SCHEMA','dbo','TABLE','u
 EXEC sp_addextendedproperty 'MS_Description','貨幣', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','currency';
 EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','createdAt';
 EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','user_wallets','COLUMN','updatedAt';
+GO
+
+-- 插入測試用戶的錢包資料
+INSERT INTO dbo.user_wallets (user_id, balance, currency, createdAt, updatedAt)
+SELECT u.uuid, 1000.00, N'TWD', GETDATE(), GETDATE()
+FROM dbo.users u
+WHERE u.email = N'user@gmail.com'
+AND NOT EXISTS (SELECT 1 FROM dbo.user_wallets w WHERE w.user_id = u.uuid);
 GO
 
 -- 創建 rfid_cards 表
@@ -611,6 +662,14 @@ EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TAB
 EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','rfid_cards','COLUMN','updatedAt';
 GO
 
+-- 插入測試用戶的RFID卡資料
+INSERT INTO dbo.rfid_cards (card_number, user_id, card_type, status, issued_at, createdAt, updatedAt)
+SELECT N'RFID001', u.uuid, N'RFID', N'ACTIVE', GETDATE(), GETDATE(), GETDATE()
+FROM dbo.users u
+WHERE u.email = N'user@gmail.com'
+AND NOT EXISTS (SELECT 1 FROM dbo.rfid_cards r WHERE r.card_number = N'RFID001');
+GO
+
 -- 創建 wallet_transactions 表
 IF OBJECT_ID(N'dbo.wallet_transactions', N'U') IS NOT NULL
     DROP TABLE dbo.wallet_transactions;
@@ -627,7 +686,7 @@ CREATE TABLE dbo.wallet_transactions (
     currency NVARCHAR(3) NOT NULL DEFAULT 'TWD',
     description NVARCHAR(255) NULL,
     billing_record_id BIGINT NULL,
-    charging_transaction_id VARCHAR(50) NULL,
+    charging_transaction_id NVARCHAR(50) NULL,
     reference_id NVARCHAR(100) NULL, -- 關聯的充電交易ID或其他參考ID
     payment_method NVARCHAR(50) NULL,
     status NVARCHAR(20) NOT NULL DEFAULT 'COMPLETED' CHECK (status IN ('PENDING', 'COMPLETED', 'FAILED', 'CANCELLED')),
@@ -657,6 +716,32 @@ EXEC sp_addextendedproperty 'MS_Description','支付方式', 'SCHEMA','dbo','TAB
 EXEC sp_addextendedproperty 'MS_Description','狀態', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','status';
 EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','createdAt';
 EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','wallet_transactions','COLUMN','updatedAt';
+GO
+
+-- 插入初始儲值交易記錄
+INSERT INTO dbo.wallet_transactions (user_id, wallet_id, transaction_type, amount, balance_before, balance_after, payment_method, description, status, createdAt, updatedAt)
+SELECT 
+  u.uuid,
+  w.id,
+  N'DEPOSIT',
+  1000.00,
+  0.00,
+  1000.00,
+  N'linepay',
+  N'初始儲值',
+  N'COMPLETED',
+  GETDATE(),
+  GETDATE()
+FROM dbo.users u
+JOIN dbo.user_wallets w ON u.uuid = w.user_id
+WHERE u.email = N'user@gmail.com'
+AND NOT EXISTS (
+    SELECT 1 FROM dbo.wallet_transactions wt 
+    WHERE wt.user_id = u.uuid 
+    AND wt.transaction_type = N'DEPOSIT' 
+    AND wt.amount = 1000.00
+    AND wt.description = N'初始儲值'
+);
 GO
 
 -- 為新表創建索引

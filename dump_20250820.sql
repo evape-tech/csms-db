@@ -192,15 +192,31 @@ CREATE TABLE `users` (
   `email` varchar(255) DEFAULT NULL COMMENT '用戶Email',
   `password` varchar(255) DEFAULT NULL COMMENT '用戶密碼',
   `role` varchar(255) DEFAULT NULL COMMENT '用戶角色',
+  `first_name` VARCHAR(50) NULL COMMENT '名',
+  `last_name` VARCHAR(50) NULL COMMENT '姓',
+  `full_name` VARCHAR(100) GENERATED ALWAYS AS (CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) STORED COMMENT '全名',
+  `phone` VARCHAR(20) NULL COMMENT '手機號碼',
+  `date_of_birth` DATE NULL COMMENT '生日',
+  `email_verified` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Email是否驗證',
+  `account_status` ENUM('ACTIVE','SUSPENDED','BLOCKED','PENDING') NOT NULL DEFAULT 'ACTIVE' COMMENT '帳戶狀態',
+  `last_login_at` DATETIME NULL COMMENT '最後登入時間',
+  `login_count` INT NOT NULL DEFAULT 0 COMMENT '登入次數',
+  `failed_login_attempts` INT NOT NULL DEFAULT 0 COMMENT '失敗登入次數',
+  `lockout_until` DATETIME NULL COMMENT '鎖定到期時間',
   `createdAt` datetime NOT NULL COMMENT '建立時間',
   `updatedAt` datetime NOT NULL COMMENT '更新時間',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_users_uuid` (`uuid`)
+  UNIQUE KEY `uk_users_uuid` (`uuid`),
+  KEY `idx_email` (`email`),
+  KEY `idx_account_status` (`account_status`),
+  KEY `idx_email_verified` (`email_verified`),
+  KEY `idx_last_login_at` (`last_login_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 插入初始資料
-INSERT INTO `users` (`email`, `password`, `role`, `createdAt`, `updatedAt`) VALUES
-('evape@gmail.com', '123456', 'admin', '2023-12-26 12:07:19', '2023-12-26 12:07:19');
+INSERT INTO `users` (`email`, `password`, `role`, `first_name`, `last_name`, `phone`, `date_of_birth`, `email_verified`, `account_status`, `createdAt`, `updatedAt`) VALUES
+('evape@gmail.com', '123456', 'admin', 'Admin', 'User', '0912345678', '1990-01-01', 1, 'ACTIVE', '2023-12-26 12:07:19', '2023-12-26 12:07:19'),
+('user@gmail.com', '123456', 'user', '測試', '用戶', '0987654321', '1995-05-15', 1, 'ACTIVE', NOW(), NOW());
 
 -- 生成現有用戶的 UUID
 UPDATE `users` SET `uuid` = UUID() WHERE `uuid` IS NULL;
@@ -338,6 +354,15 @@ CREATE TABLE `user_wallets` (
   CONSTRAINT `fk_user_wallets_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- 插入測試用戶的錢包資料
+INSERT INTO `user_wallets` (`user_id`, `balance`, `currency`, `status`, `createdAt`, `updatedAt`)
+SELECT u.uuid, 1000.00, 'TWD', 'ACTIVE', NOW(), NOW()
+FROM `users` u
+WHERE u.email = 'user@gmail.com'
+ON DUPLICATE KEY UPDATE
+  `balance` = VALUES(`balance`),
+  `updatedAt` = NOW();
+
 --
 -- Table structure for table `rfid_cards`
 --
@@ -359,6 +384,15 @@ CREATE TABLE `rfid_cards` (
   KEY `idx_status` (`status`),
   CONSTRAINT `fk_rfid_cards_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 插入測試用戶的RFID卡資料
+INSERT INTO `rfid_cards` (`card_number`, `user_id`, `card_type`, `status`, `issued_at`, `createdAt`, `updatedAt`)
+SELECT 'RFID001', u.uuid, 'RFID', 'ACTIVE', NOW(), NOW(), NOW()
+FROM `users` u
+WHERE u.email = 'user@gmail.com'
+ON DUPLICATE KEY UPDATE
+  `status` = VALUES(`status`),
+  `updatedAt` = NOW();
 
 --
 -- Table structure for table `wallet_transactions`
@@ -395,6 +429,26 @@ CREATE TABLE `wallet_transactions` (
   CONSTRAINT `fk_wallet_transactions_charging_transaction` FOREIGN KEY (`charging_transaction_id`) REFERENCES `charging_transactions` (`transaction_id`),
   CONSTRAINT `fk_wallet_transactions_payment_method` FOREIGN KEY (`payment_method`) REFERENCES `billing_channels` (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 插入初始儲值交易記錄
+INSERT INTO `wallet_transactions` (`user_id`, `wallet_id`, `transaction_type`, `amount`, `balance_before`, `balance_after`, `payment_method`, `description`, `status`, `createdAt`, `updatedAt`)
+SELECT 
+  u.uuid,
+  w.id,
+  'DEPOSIT',
+  1000.00,
+  0.00,
+  1000.00,
+  'linepay',
+  '初始儲值',
+  'COMPLETED',
+  NOW(),
+  NOW()
+FROM `users` u
+JOIN `user_wallets` w ON u.uuid = w.user_id
+WHERE u.email = 'user@gmail.com'
+ON DUPLICATE KEY UPDATE
+  `status` = VALUES(`status`);
 
 --
 -- Table structure for table `cp_logs`
