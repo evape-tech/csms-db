@@ -27,8 +27,7 @@ CREATE TABLE `tariffs` (
   `description` TEXT COMMENT '費率描述',
   `tariff_type` ENUM('FIXED_RATE','TIME_OF_USE','PROGRESSIVE','SPECIAL_PROMOTION','MEMBERSHIP','CUSTOM') NOT NULL DEFAULT 'FIXED_RATE' COMMENT '費率類型',
   `base_price` DECIMAL(10,2) NOT NULL COMMENT '基本價格',
-  `service_fee` DECIMAL(10,2) DEFAULT NULL COMMENT '服務費',
-  `minimum_fee` DECIMAL(10,2) DEFAULT NULL COMMENT '最低費用',
+  `charging_parking_fee` DECIMAL(10,2) DEFAULT NULL COMMENT '充電期間停車費率(單次)',
   `peak_hours_start` VARCHAR(5) DEFAULT NULL COMMENT '尖峰開始時間',
   `peak_hours_end` VARCHAR(5) DEFAULT NULL COMMENT '尖峰結束時間',
   `peak_hours_price` DECIMAL(10,2) DEFAULT NULL COMMENT '尖峰價格',
@@ -43,6 +42,11 @@ CREATE TABLE `tariffs` (
   `promotion_code` VARCHAR(50) DEFAULT NULL COMMENT '促銷代碼',
   `valid_from` DATETIME DEFAULT NULL COMMENT '有效起始時間',
   `valid_to` DATETIME DEFAULT NULL COMMENT '有效結束時間',
+  `season_start_month` TINYINT(2) DEFAULT NULL COMMENT '季節開始月份 (1-12)',
+  `season_end_month` TINYINT(2) DEFAULT NULL COMMENT '季節結束月份 (1-12)',
+  `season_type` ENUM('SUMMER','NON_SUMMER','ALL_YEAR','CUSTOM') DEFAULT 'ALL_YEAR' COMMENT '季節類型',
+  `grace_period_minutes` INT DEFAULT 15 COMMENT '充電後寬限期(分鐘)',
+  `penalty_rate_per_hour` DECIMAL(10,2) DEFAULT NULL COMMENT '超時懲罰費率(每小時)',
   `ac_only` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '僅限AC充電',
   `dc_only` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '僅限DC充電',
   `membership_required` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否需要會員',
@@ -59,52 +63,92 @@ CREATE TABLE `tariffs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 INSERT INTO `tariffs` 
-(`name`, `description`, `tariff_type`, `base_price`, `service_fee`, `minimum_fee`,
+(`name`, `description`, `tariff_type`, `base_price`, `charging_parking_fee`,
  `peak_hours_start`, `peak_hours_end`, `peak_hours_price`, `off_peak_price`, `weekend_price`,
  `tier1_max_kwh`, `tier1_price`, `tier2_max_kwh`, `tier2_price`, `tier3_price`,
  `discount_percentage`, `promotion_code`, `valid_from`, `valid_to`,
+ `season_start_month`, `season_end_month`, `season_type`,
+ `grace_period_minutes`, `penalty_rate_per_hour`,
  `ac_only`, `dc_only`, `membership_required`, `is_active`, `is_default`, `created_by`, `createdAt`, `updatedAt`)
 VALUES
-('標準費率', '適用于所有充電站的基本固定單價費率', 'FIXED_RATE', 2.50, 0.50, 5.00,
+('標準費率', '適用于所有充電站的基本固定單價費率', 'FIXED_RATE', 2.50, 5.00,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, 'ALL_YEAR',
+ 15, 8.00,
  0, 0, 0, 1, 1, 'system', NOW(), NOW()),
 
-('峰谷電價', '根據時段不同收取不同費用的分時費率', 'TIME_OF_USE', 2.80, 0.50, 5.00,
+('峰谷電價', '根據時段不同收取不同費用的分時費率', 'TIME_OF_USE', 2.80, 4.50,
  '09:00', '22:00', 3.50, 1.80, 2.20,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, 'ALL_YEAR',
+ 15, 8.00,
  0, 0, 0, 1, 0, 'system', NOW(), NOW()),
 
-('累進電價', '用電量越多單價越高的階梯式費率', 'PROGRESSIVE', 2.50, 0.50, 5.00,
+('累進電價', '用電量越多單價越高的階梯式費率', 'PROGRESSIVE', 2.50, 4.00,
  NULL, NULL, NULL, NULL, NULL,
  10.00, 2.20, 30.00, 2.80, 3.50,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, 'ALL_YEAR',
+ 15, 8.00,
  0, 0, 0, 1, 0, 'system', NOW(), NOW()),
 
-('會員專享', '會員專享優惠費率', 'MEMBERSHIP', 2.50, 0.00, 0.00,
+('會員專享', '會員專享優惠費率', 'MEMBERSHIP', 2.50, 3.00,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  20.00, NULL, NULL, NULL,
+ NULL, NULL, 'ALL_YEAR',
+ 30, 6.00,
  0, 0, 1, 1, 0, 'system', NOW(), NOW()),
 
-('DC快充費率', '適用於直流快充的專用費率', 'FIXED_RATE', 3.20, 1.00, 10.00,
+('DC快充費率', '適用於直流快充的專用費率', 'FIXED_RATE', 3.20, 8.00,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, 'ALL_YEAR',
+ 10, 50.00,
  0, 1, 0, 1, 0, 'system', NOW(), NOW()),
 
-('AC慢充費率', '適用於交流慢充的專用費率', 'FIXED_RATE', 2.30, 0.50, 5.00,
+('AC慢充費率', '適用於交流慢充的專用費率', 'FIXED_RATE', 2.30, 4.00,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, 'ALL_YEAR',
+ 20, 30.00,
  1, 0, 0, 1, 0, 'system', NOW(), NOW()),
 
-('新用戶首充優惠', '新用戶首次充電特惠價格', 'SPECIAL_PROMOTION', 2.00, 0.00, 0.00,
+('新用戶首充優惠', '新用戶首次充電特惠價格', 'SPECIAL_PROMOTION', 2.00, 2.50,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  50.00, 'FIRST_CHARGE', '2025-09-01', '2025-12-31',
+ NULL, NULL, 'ALL_YEAR',
+ 30, 4.00,
+ 0, 0, 0, 1, 0, 'system', NOW(), NOW()),
+
+('夏季峰谷電價', '夏季時段的峰谷電價費率 (6-9月)', 'TIME_OF_USE', 3.00, 4.50,
+ '08:00', '23:00', 4.00, 2.20, 2.80,
+ NULL, NULL, NULL, NULL, NULL,
+ NULL, NULL, NULL, NULL,
+ 6, 9, 'SUMMER',
+ 15, 10.00,
+ 0, 0, 0, 1, 0, 'system', NOW(), NOW()),
+
+('非夏季峰谷電價', '非夏季時段的峰谷電價費率 (10-5月)', 'TIME_OF_USE', 2.60, 4.50,
+ '09:00', '22:00', 3.20, 1.60, 2.00,
+ NULL, NULL, NULL, NULL, NULL,
+ NULL, NULL, NULL, NULL,
+ 10, 5, 'NON_SUMMER',
+ 15, 8.00,
+ 0, 0, 0, 1, 0, 'system', NOW(), NOW()),
+
+('自訂季節費率', '自訂月份範圍的費率示例 (3-5月)', 'TIME_OF_USE', 2.80, 4.00,
+ '09:00', '22:00', 3.50, 2.00, 2.50,
+ NULL, NULL, NULL, NULL, NULL,
+ NULL, NULL, NULL, NULL,
+ 3, 5, 'CUSTOM',
+ 15, 9.00,
  0, 0, 0, 1, 0, 'system', NOW(), NOW());
 
 --
@@ -118,12 +162,9 @@ CREATE TABLE `stations` (
   `address` VARCHAR(255) DEFAULT NULL COMMENT '地址',
   `floor` VARCHAR(50) DEFAULT NULL COMMENT '樓層',
   `operator_id` VARCHAR(50) DEFAULT NULL COMMENT '營運商/業主ID',
-  `tariff_id` INT DEFAULT NULL COMMENT '預設費率ID (tariffs.id)',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_station_code` (`station_code`),
-  KEY `IX_stations_tariff_id` (`tariff_id`),
-  CONSTRAINT `fk_stations_tariff` FOREIGN KEY (`tariff_id`) REFERENCES `tariffs`(`id`) ON DELETE SET NULL ON UPDATE CASCADE
+  UNIQUE KEY `uniq_station_code` (`station_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 INSERT INTO `stations` (`station_code`, `name`, `address`, `floor`, `operator_id`, `updated_at`) VALUES
@@ -178,14 +219,73 @@ CREATE TABLE `guns` (
   `max_kw` int DEFAULT 0 COMMENT '最大功率(kW)',
   `meter_id` INT NOT NULL COMMENT '關聯電表ID (meters.id)',
   PRIMARY KEY (`id`),
+  KEY `IX_guns_meter_id` (`meter_id`),
   CONSTRAINT `fk_guns_meter` FOREIGN KEY (`meter_id`) REFERENCES `meters` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- 插入預設充電槍資料 (總共7個槍：3個AC槍 + 4個DC槍)
+INSERT INTO `guns` (`connector`, `cpid`, `cpsn`, `guns_status`, `createdAt`, `updatedAt`, `acdc`, `max_kw`, `meter_id`) VALUES
+-- AC槍 (CP001-CP003，每個充電站1個AC槍)
+('1', '1000', 'CP001', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, 1),
+('1', '1001', 'CP002', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, 1),
+('1', '1002', 'CP003', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, 1),
+
+-- DC槍 (CP004-CP005，每個充電站2個DC槍，connector 1和2)
+('1', '1003', 'CP004', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, 1),
+('2', '1004', 'CP004', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, 1),
+('1', '1005', 'CP005', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, 1),
+('2', '1006', 'CP005', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, 1)
+ON DUPLICATE KEY UPDATE
+  `guns_status` = VALUES(`guns_status`),
+  `updatedAt` = CURDATE();
+
+
+--
+-- Table structure for table `gun_tariffs`
+--
+
+DROP TABLE IF EXISTS `gun_tariffs`;
+CREATE TABLE `gun_tariffs` (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `gun_id` int NOT NULL COMMENT '關聯充電槍ID (guns.id)',
+  `tariff_id` int NOT NULL COMMENT '關聯費率ID (tariffs.id)',
+  `priority` int DEFAULT 1 COMMENT '費率優先順序 (數字越小優先級越高)',
+  `is_active` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否啟用此費率',
+  `createdAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_gun_tariff` (`gun_id`, `tariff_id`),
+  KEY `IX_gun_tariffs_gun_id` (`gun_id`),
+  KEY `IX_gun_tariffs_tariff_id` (`tariff_id`),
+  KEY `IX_gun_tariffs_priority` (`priority`),
+  KEY `IX_gun_tariffs_is_active` (`is_active`),
+  CONSTRAINT `fk_gun_tariffs_gun` FOREIGN KEY (`gun_id`) REFERENCES `guns` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_gun_tariffs_tariff` FOREIGN KEY (`tariff_id`) REFERENCES `tariffs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 插入預設充電槍費率關聯資料 (每個槍關聯夏季和非夏季費率)
+INSERT INTO `gun_tariffs` (`gun_id`, `tariff_id`, `priority`, `is_active`, `createdAt`, `updatedAt`)
+SELECT g.id, 8, 1, 1, NOW(), NOW()  -- 夏季峰谷電價 (優先順序1)
+FROM `guns` g
+WHERE g.cpsn LIKE 'CP%'
+ON DUPLICATE KEY UPDATE
+  `priority` = VALUES(`priority`),
+  `is_active` = VALUES(`is_active`),
+  `updatedAt` = NOW();
+
+INSERT INTO `gun_tariffs` (`gun_id`, `tariff_id`, `priority`, `is_active`, `createdAt`, `updatedAt`)
+SELECT g.id, 9, 2, 1, NOW(), NOW()  -- 非夏季峰谷電價 (優先順序2)
+FROM `guns` g
+WHERE g.cpsn LIKE 'CP%'
+ON DUPLICATE KEY UPDATE
+  `priority` = VALUES(`priority`),
+  `is_active` = VALUES(`is_active`),
+  `updatedAt` = NOW();
 
 --
 -- Table structure for table `users`
 --
-DROP TABLE IF EXISTS `users`;
+
 CREATE TABLE `users` (
   `id` int NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
   `uuid` varchar(36) DEFAULT NULL COMMENT '用戶UUID',

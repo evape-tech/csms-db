@@ -10,7 +10,14 @@ GO
 
 -- Table: tariffs
 IF OBJECT_ID(N'dbo.tariffs', N'U') IS NOT NULL
-    DROP TABLE dbo.tariffs;
+    (N'自訂季節費率', N'自訂月份範圍的費率示例 (3-5月)', N'TIME_OF_USE', 2.80, 0.50, 5.00,
+ N'09:00', N'22:00', 3.50, 2.00, 2.50,
+ NULL, NULL, NULL, NULL, NULL,
+ NULL, NULL, NULL, NULL,
+ 3, 5, N'CUSTOM',
+ 4.50, 45.00, 20, 90.00, 5.50,
+ 15, 9.00, 110.00, 0,
+ 0, 0, 0, 1, 0, N'system', GETDATE(), GETDATE());LE dbo.tariffs;
 GO
 
 CREATE TABLE dbo.tariffs (
@@ -20,8 +27,7 @@ CREATE TABLE dbo.tariffs (
     tariff_type NVARCHAR(20) NOT NULL DEFAULT N'FIXED_RATE' 
         CHECK (tariff_type IN (N'FIXED_RATE', N'TIME_OF_USE', N'PROGRESSIVE', N'SPECIAL_PROMOTION', N'MEMBERSHIP', N'CUSTOM')),
     base_price DECIMAL(10,2) NOT NULL,
-    service_fee DECIMAL(10,2) NULL,
-    minimum_fee DECIMAL(10,2) NULL,
+    charging_parking_fee DECIMAL(10,2) NULL,
     peak_hours_start NVARCHAR(5) NULL,
     peak_hours_end NVARCHAR(5) NULL,
     peak_hours_price DECIMAL(10,2) NULL,
@@ -36,6 +42,12 @@ CREATE TABLE dbo.tariffs (
     promotion_code NVARCHAR(50) NULL,
     valid_from DATETIME2(0) NULL,
     valid_to DATETIME2(0) NULL,
+    season_start_month TINYINT NULL,
+    season_end_month TINYINT NULL,
+    season_type NVARCHAR(20) NOT NULL DEFAULT N'ALL_YEAR' 
+        CHECK (season_type IN (N'SUMMER', N'NON_SUMMER', N'ALL_YEAR', N'CUSTOM')),
+    grace_period_minutes INT NULL,
+    penalty_rate_per_hour DECIMAL(10,2) NULL,
     ac_only BIT NOT NULL DEFAULT 0,
     dc_only BIT NOT NULL DEFAULT 0,
     membership_required BIT NOT NULL DEFAULT 0,
@@ -52,8 +64,7 @@ EXEC sp_addextendedproperty 'MS_Description','方案名稱', 'SCHEMA','dbo','TAB
 EXEC sp_addextendedproperty 'MS_Description','方案描述', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','description';
 EXEC sp_addextendedproperty 'MS_Description','方案類型', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','tariff_type';
 EXEC sp_addextendedproperty 'MS_Description','基本費用', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','base_price';
-EXEC sp_addextendedproperty 'MS_Description','服務費', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','service_fee';
-EXEC sp_addextendedproperty 'MS_Description','最低收費', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','minimum_fee';
+EXEC sp_addextendedproperty 'MS_Description','充電期間停車費率(單次)', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','charging_parking_fee';
 EXEC sp_addextendedproperty 'MS_Description','尖峰開始時間(HH:MM)', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','peak_hours_start';
 EXEC sp_addextendedproperty 'MS_Description','尖峰結束時間(HH:MM)', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','peak_hours_end';
 EXEC sp_addextendedproperty 'MS_Description','尖峰價格', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','peak_hours_price';
@@ -68,6 +79,11 @@ EXEC sp_addextendedproperty 'MS_Description','折扣百分比', 'SCHEMA','dbo','
 EXEC sp_addextendedproperty 'MS_Description','促銷碼', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','promotion_code';
 EXEC sp_addextendedproperty 'MS_Description','有效開始時間', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','valid_from';
 EXEC sp_addextendedproperty 'MS_Description','有效結束時間', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','valid_to';
+EXEC sp_addextendedproperty 'MS_Description','季節開始月份 (1-12)', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','season_start_month';
+EXEC sp_addextendedproperty 'MS_Description','季節結束月份 (1-12)', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','season_end_month';
+EXEC sp_addextendedproperty 'MS_Description','季節類型', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','season_type';
+EXEC sp_addextendedproperty 'MS_Description','充電完成後寬限時間 (分鐘)', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','grace_period_minutes';
+EXEC sp_addextendedproperty 'MS_Description','超時罰款費率 (每小時)', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','penalty_rate_per_hour';
 EXEC sp_addextendedproperty 'MS_Description','僅限AC', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','ac_only';
 EXEC sp_addextendedproperty 'MS_Description','僅限DC', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','dc_only';
 EXEC sp_addextendedproperty 'MS_Description','需會員', 'SCHEMA','dbo','TABLE','tariffs','COLUMN','membership_required';
@@ -79,52 +95,92 @@ EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TAB
 GO
 
 INSERT INTO dbo.tariffs
-(name, description, tariff_type, base_price, service_fee, minimum_fee,
+(name, description, tariff_type, base_price, charging_parking_fee,
  peak_hours_start, peak_hours_end, peak_hours_price, off_peak_price, weekend_price,
  tier1_max_kwh, tier1_price, tier2_max_kwh, tier2_price, tier3_price,
  discount_percentage, promotion_code, valid_from, valid_to,
- ac_only, dc_only, membership_required, is_active, is_default, created_by, createdAt, updatedAt)
+ season_start_month, season_end_month, season_type,
+ grace_period_minutes, penalty_rate_per_hour,
+ ac_only, dc_only, membership_required, is_active, created_by, createdAt, updatedAt)
 VALUES
-(N'標準費率', N'適用于所有充電站的基本固定單價費率', N'FIXED_RATE', 2.50, 0.50, 5.00,
+(N'標準費率', N'適用于所有充電站的基本固定單價費率', N'FIXED_RATE', 2.50, 5.00,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
- 0, 0, 0, 1, 1, N'system', GETDATE(), GETDATE()),
+ NULL, NULL, N'ALL_YEAR',
+ 15, 8.00,
+ 0, 0, 0, 1, N'system', GETDATE(), GETDATE()),
 
-(N'峰谷電價', N'根據時段不同收取不同費用的分時費率', N'TIME_OF_USE', 2.80, 0.50, 5.00,
+(N'峰谷電價', N'根據時段不同收取不同費用的分時費率', N'TIME_OF_USE', 2.80, 4.50,
  N'09:00', N'22:00', 3.50, 1.80, 2.20,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, N'ALL_YEAR',
+ 15, 8.00,
  0, 0, 0, 1, 0, N'system', GETDATE(), GETDATE()),
 
-(N'累進電價', N'用電量越多單價越高的階梯式費率', N'PROGRESSIVE', 2.50, 0.50, 5.00,
+(N'累進電價', N'用電量越多單價越高的階梯式費率', N'PROGRESSIVE', 2.50, 4.00,
  NULL, NULL, NULL, NULL, NULL,
  10.00, 2.20, 30.00, 2.80, 3.50,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, N'ALL_YEAR',
+ 15, 8.00,
  0, 0, 0, 1, 0, N'system', GETDATE(), GETDATE()),
 
-(N'會員專享', N'會員專享優惠費率', N'MEMBERSHIP', 2.50, 0.00, 0.00,
+(N'會員專享', N'會員專享優惠費率', N'MEMBERSHIP', 2.50, 3.00,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  20.00, NULL, NULL, NULL,
+ NULL, NULL, N'ALL_YEAR',
+ 30, 6.00,
  0, 0, 1, 1, 0, N'system', GETDATE(), GETDATE()),
 
-(N'DC快充費率', N'適用於直流快充的專用費率', N'FIXED_RATE', 3.20, 1.00, 10.00,
+(N'DC快充費率', N'適用於直流快充的專用費率', N'FIXED_RATE', 3.20, 8.00,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, N'ALL_YEAR',
+ 10, 50.00,
  0, 1, 0, 1, 0, N'system', GETDATE(), GETDATE()),
 
-(N'AC慢充費率', N'適用於交流慢充的專用費率', N'FIXED_RATE', 2.30, 0.50, 5.00,
+(N'AC慢充費率', N'適用於交流慢充的專用費率', N'FIXED_RATE', 2.30, 4.00,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
+ NULL, NULL, N'ALL_YEAR',
+ 20, 30.00,
  1, 0, 0, 1, 0, N'system', GETDATE(), GETDATE()),
 
-(N'新用戶首充優惠', N'新用戶首次充電特惠價格', N'SPECIAL_PROMOTION', 2.00, 0.00, 0.00,
+(N'新用戶首充優惠', N'新用戶首次充電特惠價格', N'SPECIAL_PROMOTION', 2.00, 2.50,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL, NULL,
- 50.00, N'FIRST_CHARGE', CAST('2025-07-01' AS DATETIME2), CAST('2025-07-01' AS DATETIME2),
+ 50.00, N'FIRST_CHARGE', CAST('2025-09-01' AS DATETIME2), CAST('2025-12-31' AS DATETIME2),
+ NULL, NULL, N'ALL_YEAR',
+ 30, 4.00,
+ 0, 0, 0, 1, 0, N'system', GETDATE(), GETDATE()),
+
+(N'夏季峰谷電價', N'夏季時段的峰谷電價費率 (6-9月)', N'TIME_OF_USE', 2.80, 4.50,
+ N'08:00', N'23:00', 4.00, 2.20, 2.80,
+ NULL, NULL, NULL, NULL, NULL,
+ NULL, NULL, NULL, NULL,
+ 6, 9, N'SUMMER',
+ 15, 10.00,
+ 0, 0, 0, 1, 0, N'system', GETDATE(), GETDATE()),
+
+(N'非夏季峰谷電價', N'非夏季時段的峰谷電價費率 (10-5月)', N'TIME_OF_USE', 2.60, 4.50,
+ N'09:00', N'22:00', 3.20, 1.60, 2.00,
+ NULL, NULL, NULL, NULL, NULL,
+ NULL, NULL, NULL, NULL,
+ 10, 5, N'NON_SUMMER',
+ 15, 8.00,
+ 0, 0, 0, 1, 0, N'system', GETDATE(), GETDATE()),
+
+(N'自訂季節費率', N'自訂月份範圍的費率示例 (3-5月)', N'TIME_OF_USE', 2.80,
+ N'09:00', N'22:00', 3.50, 2.00, 2.50,
+ NULL, NULL, NULL, NULL, NULL,
+ NULL, NULL, NULL, NULL,
+ 3, 5, N'CUSTOM',
+ 15, 9.00,
  0, 0, 0, 1, 0, N'system', GETDATE(), GETDATE());
 GO
 
@@ -132,6 +188,18 @@ CREATE INDEX IX_tariffs_name ON dbo.tariffs(name);
 CREATE INDEX IX_tariffs_tariff_type ON dbo.tariffs(tariff_type);
 CREATE INDEX IX_tariffs_is_active ON dbo.tariffs(is_active);
 CREATE INDEX IX_tariffs_is_default ON dbo.tariffs(is_default);
+GO
+
+-- 為 tariffs 表創建觸發器來自動更新 updatedAt
+CREATE TRIGGER TR_tariffs_update_timestamp
+ON dbo.tariffs
+AFTER UPDATE
+AS
+BEGIN
+    UPDATE dbo.tariffs
+    SET updatedAt = GETDATE()
+    WHERE id IN (SELECT id FROM inserted);
+END;
 GO
 
 /****** Table: stations ******/
@@ -146,12 +214,8 @@ CREATE TABLE dbo.stations (
     address NVARCHAR(255) NULL,                      -- 地址
     floor NVARCHAR(50) NULL,                          -- 樓層
     operator_id NVARCHAR(50) NULL,                   -- 營運商/業主ID
-    tariff_id INT NULL,                               -- 預設費率ID (tariffs.id)
     updated_at DATETIME2(0) NOT NULL DEFAULT GETDATE(), -- 更新時間
-    CONSTRAINT UQ_stations_station_code UNIQUE (station_code),
-    CONSTRAINT FK_stations_tariff FOREIGN KEY (tariff_id) REFERENCES dbo.tariffs(id) 
-        ON DELETE SET NULL 
-        ON UPDATE CASCADE
+    CONSTRAINT UQ_stations_station_code UNIQUE (station_code)
 );
 GO
 
@@ -242,10 +306,8 @@ CREATE TABLE dbo.guns (
     transactionid NVARCHAR(255) NULL,
     acdc NVARCHAR(2) NULL DEFAULT N'AC',
     max_kw INT NULL DEFAULT 0,
-
-    -- 新增欄位：meter_id，對應 meters.id
     meter_id INT NULL,
-    CONSTRAINT FK_guns_meter FOREIGN KEY (meter_id) REFERENCES dbo.meters(id)
+    CONSTRAINT FK_guns_meter FOREIGN KEY (meter_id) REFERENCES dbo.meters(id),
 );
 GO
 
@@ -271,9 +333,103 @@ EXEC sp_addextendedproperty 'MS_Description','最大功率(kW)', 'SCHEMA','dbo',
 EXEC sp_addextendedproperty 'MS_Description','對應電表ID', 'SCHEMA','dbo','TABLE','guns','COLUMN','meter_id';
 GO
 
--- 建立索引
-CREATE INDEX IX_stations_operator_id ON dbo.stations(operator_id);
-CREATE INDEX IX_stations_name ON dbo.stations(name);
+-- 建立 guns 表的索引
+CREATE INDEX IX_guns_cpid ON dbo.guns(cpid);
+CREATE INDEX IX_guns_cpsn ON dbo.guns(cpsn);
+CREATE INDEX IX_guns_connector ON dbo.guns(connector);
+CREATE INDEX IX_guns_guns_status ON dbo.guns(guns_status);
+CREATE INDEX IX_guns_meter_id ON dbo.guns(meter_id);
+CREATE INDEX IX_guns_acdc ON dbo.guns(acdc);
+GO
+
+-- 插入預設充電槍資料 (總共7個槍：3個AC槍 + 4個DC槍)
+IF NOT EXISTS (SELECT 1 FROM dbo.guns WHERE cpid = N'1000' AND connector = N'1')
+BEGIN
+    INSERT INTO dbo.guns (connector, cpid, cpsn, guns_status, createdAt, updatedAt, acdc, max_kw, meter_id) VALUES
+    -- AC槍 (CP001-CP003，每個充電站1個AC槍)
+    (N'1', N'1000', N'CP001', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, 1),
+    (N'1', N'1001', N'CP002', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, 1),
+    (N'1', N'1002', N'CP003', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, 1),
+
+    -- DC槍 (CP004-CP005，每個充電站2個DC槍，connector 1和2)
+    (N'1', N'1003', N'CP004', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, 1),
+    (N'2', N'1004', N'CP004', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, 1),
+    (N'1', N'1005', N'CP005', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, 1),
+    (N'2', N'1006', N'CP005', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, 1);
+END
+GO
+
+-- 為 guns 表創建觸發器來自動更新 updatedAt
+CREATE TRIGGER TR_guns_update_timestamp
+ON dbo.guns
+AFTER UPDATE
+AS
+BEGIN
+    UPDATE dbo.guns
+    SET updatedAt = GETDATE()
+    WHERE id IN (SELECT id FROM inserted);
+END;
+GO
+
+
+/****** Table: gun_tariffs ******/
+IF OBJECT_ID(N'dbo.gun_tariffs', N'U') IS NOT NULL
+    DROP TABLE dbo.gun_tariffs;
+GO
+
+CREATE TABLE dbo.gun_tariffs (
+    id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    gun_id INT NOT NULL,
+    tariff_id INT NOT NULL,
+    priority INT NULL DEFAULT 1,
+    is_active BIT NOT NULL DEFAULT 1,
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT UQ_gun_tariff UNIQUE (gun_id, tariff_id),
+    CONSTRAINT FK_gun_tariffs_gun FOREIGN KEY (gun_id) REFERENCES dbo.guns(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT FK_gun_tariffs_tariff FOREIGN KEY (tariff_id) REFERENCES dbo.tariffs(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+GO
+
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','gun_tariffs','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','充電槍ID', 'SCHEMA','dbo','TABLE','gun_tariffs','COLUMN','gun_id';
+EXEC sp_addextendedproperty 'MS_Description','費率ID', 'SCHEMA','dbo','TABLE','gun_tariffs','COLUMN','tariff_id';
+EXEC sp_addextendedproperty 'MS_Description','優先順序 (數字越小優先級越高)', 'SCHEMA','dbo','TABLE','gun_tariffs','COLUMN','priority';
+EXEC sp_addextendedproperty 'MS_Description','是否啟用', 'SCHEMA','dbo','TABLE','gun_tariffs','COLUMN','is_active';
+EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','gun_tariffs','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','gun_tariffs','COLUMN','updatedAt';
+GO
+
+CREATE INDEX IX_gun_tariffs_gun_id ON dbo.gun_tariffs(gun_id);
+CREATE INDEX IX_gun_tariffs_tariff_id ON dbo.gun_tariffs(tariff_id);
+CREATE INDEX IX_gun_tariffs_priority ON dbo.gun_tariffs(priority);
+CREATE INDEX IX_gun_tariffs_is_active ON dbo.gun_tariffs(is_active);
+GO
+
+-- 為 gun_tariffs 表創建觸發器來自動更新 updatedAt
+CREATE TRIGGER TR_gun_tariffs_update_timestamp
+ON dbo.gun_tariffs
+AFTER UPDATE
+AS
+BEGIN
+    UPDATE dbo.gun_tariffs
+    SET updatedAt = GETDATE()
+    WHERE id IN (SELECT id FROM inserted);
+END;
+GO
+
+-- 插入預設充電槍費率關聯資料 (每個槍關聯夏季和非夏季費率)
+INSERT INTO dbo.gun_tariffs (gun_id, tariff_id, priority, is_active, createdAt, updatedAt)
+SELECT g.id, 8, 1, 1, GETDATE(), GETDATE()  -- 夏季峰谷電價 (優先順序1)
+FROM dbo.guns g
+WHERE g.cpsn LIKE N'CP%'
+AND NOT EXISTS (SELECT 1 FROM dbo.gun_tariffs gt WHERE gt.gun_id = g.id AND gt.tariff_id = 8);
+
+INSERT INTO dbo.gun_tariffs (gun_id, tariff_id, priority, is_active, createdAt, updatedAt)
+SELECT g.id, 9, 2, 1, GETDATE(), GETDATE()  -- 非夏季峰谷電價 (優先順序2)
+FROM dbo.guns g
+WHERE g.cpsn LIKE N'CP%'
+AND NOT EXISTS (SELECT 1 FROM dbo.gun_tariffs gt WHERE gt.gun_id = g.id AND gt.tariff_id = 9);
 GO
 
 
