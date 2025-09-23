@@ -312,13 +312,12 @@ CREATE TABLE `users` (
   KEY `idx_last_login_at` (`last_login_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- 插入初始資料
-INSERT INTO `users` (`email`, `password`, `role`, `first_name`, `last_name`, `phone`, `date_of_birth`, `email_verified`, `account_status`, `createdAt`, `updatedAt`) VALUES
-('evape@gmail.com', '123456', 'admin', 'Admin', 'User', '0912345678', '1990-01-01', 1, 'ACTIVE', '2023-12-26 12:07:19', '2023-12-26 12:07:19'),
-('user@gmail.com', '123456', 'user', '測試', '用戶', '0987654321', '1995-05-15', 1, 'ACTIVE', NOW(), NOW());
+-- 插入初始資料 
+INSERT INTO `users` (`uuid`, `email`, `password`, `role`, `first_name`, `last_name`, `phone`, `date_of_birth`, `email_verified`, `account_status`, `createdAt`, `updatedAt`) VALUES
+('cc2bccd0-c979-11e9-ba8d-d70282892727', 'evape@gmail.com', '123456', 'admin', 'Admin', 'User', '0912345678', '1990-01-01', 1, 'ACTIVE', NOW(), NOW());
 
--- 生成現有用戶的 UUID
-UPDATE `users` SET `uuid` = UUID() WHERE `uuid` IS NULL;
+INSERT INTO `users` (`uuid`, `email`, `password`, `role`, `first_name`, `last_name`, `phone`, `date_of_birth`, `email_verified`, `account_status`, `createdAt`, `updatedAt`) VALUES
+('cc2bccd0-c979-11e9-ba8d-d70282892728', 'user@gmail.com', '123456', 'user', '測試', '用戶', '0987654321', '1995-05-15', 1, 'ACTIVE', NOW(), NOW());
 
 
 --
