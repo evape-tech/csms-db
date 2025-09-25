@@ -532,7 +532,7 @@ CREATE TABLE dbo.charging_transactions (
     connector_id INT NOT NULL,
 
     -- 用戶識別
-    user_id NVARCHAR(36) NULL,
+    user_id NVARCHAR(36) NOT NULL,
     id_tag NVARCHAR(20) NOT NULL,
 
     -- 電表數據
@@ -650,7 +650,6 @@ GO
 CREATE TABLE dbo.billing_records (
     id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     transaction_id NVARCHAR(50) NOT NULL,
-    transaction_ref BIGINT NULL,
     tariff_id INT NOT NULL,
     applied_price DECIMAL(10,2) NOT NULL,
     energy_consumed DECIMAL(10,3) NOT NULL,
@@ -669,7 +668,7 @@ CREATE TABLE dbo.billing_records (
     payment_method NVARCHAR(50) NULL,
     payment_reference NVARCHAR(100) NULL,
     payment_time DATETIME2(0) NULL,
-    user_id NVARCHAR(36) NULL,
+    user_id NVARCHAR(36) NOT NULL,
     id_tag NVARCHAR(20) NOT NULL,
     cpid NVARCHAR(255) NOT NULL,
     cpsn NVARCHAR(255) NOT NULL,
@@ -680,15 +679,14 @@ CREATE TABLE dbo.billing_records (
     createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
     CONSTRAINT FK_billing_records_tariff_id FOREIGN KEY (tariff_id) REFERENCES tariffs(id),
-    CONSTRAINT FK_billing_records_transaction_ref FOREIGN KEY (transaction_ref) REFERENCES charging_transactions(id),
+    CONSTRAINT FK_billing_records_transaction_id FOREIGN KEY (transaction_id) REFERENCES charging_transactions(transaction_id),
     CONSTRAINT FK_billing_records_payment_method FOREIGN KEY (payment_method) REFERENCES billing_channels(code),
     CONSTRAINT FK_billing_records_user_uuid FOREIGN KEY (user_id) REFERENCES dbo.users(uuid)
 );
 GO
 
 EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','id';
-EXEC sp_addextendedproperty 'MS_Description','交易編號', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','transaction_id';
-EXEC sp_addextendedproperty 'MS_Description','交易參照ID(charging_transactions.id)', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','transaction_ref';
+EXEC sp_addextendedproperty 'MS_Description','交易編號 (關聯 charging_transactions.transaction_id)', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','transaction_id';
 EXEC sp_addextendedproperty 'MS_Description','費率ID(tariffs.id)', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','tariff_id';
 EXEC sp_addextendedproperty 'MS_Description','套用價格', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','applied_price';
 EXEC sp_addextendedproperty 'MS_Description','消耗電量(kWh)', 'SCHEMA','dbo','TABLE','billing_records','COLUMN','energy_consumed';
@@ -788,6 +786,14 @@ WHERE u.email = N'user@gmail.com'
 AND NOT EXISTS (SELECT 1 FROM dbo.user_wallets w WHERE w.user_id = u.uuid);
 GO
 
+-- 插入管理員用戶的錢包資料
+INSERT INTO dbo.user_wallets (user_id, balance, currency, createdAt, updatedAt)
+SELECT u.uuid, 5000.00, N'TWD', GETDATE(), GETDATE()
+FROM dbo.users u
+WHERE u.email = N'evape@gmail.com'
+AND NOT EXISTS (SELECT 1 FROM dbo.user_wallets w WHERE w.user_id = u.uuid);
+GO
+
 -- 創建 rfid_cards 表
 IF OBJECT_ID(N'dbo.rfid_cards', N'U') IS NOT NULL
     DROP TABLE dbo.rfid_cards;
@@ -822,6 +828,14 @@ SELECT N'RFID001', u.uuid, N'RFID', N'ACTIVE', GETDATE(), GETDATE(), GETDATE()
 FROM dbo.users u
 WHERE u.email = N'user@gmail.com'
 AND NOT EXISTS (SELECT 1 FROM dbo.rfid_cards r WHERE r.card_number = N'RFID001');
+GO
+
+-- 插入管理員用戶的RFID卡資料
+INSERT INTO dbo.rfid_cards (card_number, user_id, card_type, status, issued_at, createdAt, updatedAt)
+SELECT N'RFID002', u.uuid, N'RFID', N'ACTIVE', GETDATE(), GETDATE(), GETDATE()
+FROM dbo.users u
+WHERE u.email = N'evape@gmail.com'
+AND NOT EXISTS (SELECT 1 FROM dbo.rfid_cards r WHERE r.card_number = N'RFID002');
 GO
 
 -- 創建 wallet_transactions 表
@@ -895,6 +909,32 @@ AND NOT EXISTS (
     AND wt.transaction_type = N'DEPOSIT' 
     AND wt.amount = 1000.00
     AND wt.description = N'初始儲值'
+);
+GO
+
+-- 插入管理員用戶的初始儲值交易記錄
+INSERT INTO dbo.wallet_transactions (user_id, wallet_id, transaction_type, amount, balance_before, balance_after, payment_method, description, status, createdAt, updatedAt)
+SELECT 
+  u.uuid,
+  w.id,
+  N'DEPOSIT',
+  5000.00,
+  0.00,
+  5000.00,
+  N'linepay',
+  N'管理員初始儲值',
+  N'COMPLETED',
+  GETDATE(),
+  GETDATE()
+FROM dbo.users u
+JOIN dbo.user_wallets w ON u.uuid = w.user_id
+WHERE u.email = N'evape@gmail.com'
+AND NOT EXISTS (
+    SELECT 1 FROM dbo.wallet_transactions wt 
+    WHERE wt.user_id = u.uuid 
+    AND wt.transaction_type = N'DEPOSIT' 
+    AND wt.amount = 5000.00
+    AND wt.description = N'管理員初始儲值'
 );
 GO
 

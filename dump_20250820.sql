@@ -332,7 +332,7 @@ CREATE TABLE `charging_transactions` (
   `cpid` varchar(255) NOT NULL COMMENT '充電樁ID',
   `cpsn` varchar(255) NOT NULL COMMENT '充電樁序號',
   `connector_id` int NOT NULL COMMENT '接頭ID',
-  `user_id` varchar(36) DEFAULT NULL COMMENT '用戶UUID',
+  `user_id` varchar(36) NOT NULL COMMENT '用戶UUID',
   `id_tag` varchar(20) NOT NULL COMMENT '用戶ID標籤 or rfid',
   `meter_start` decimal(10,3) DEFAULT NULL COMMENT '開始電表讀值',
   `meter_stop` decimal(10,3) DEFAULT NULL COMMENT '結束電表讀值',
@@ -390,8 +390,7 @@ ON DUPLICATE KEY UPDATE
 DROP TABLE IF EXISTS `billing_records`;
 CREATE TABLE `billing_records` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
-  `transaction_id` VARCHAR(50) NOT NULL COMMENT '交易ID',
-  `transaction_ref` BIGINT UNSIGNED DEFAULT NULL COMMENT '關聯交易ID',
+  `transaction_id` VARCHAR(50) NOT NULL COMMENT '交易ID (關聯 charging_transactions.transaction_id)',
   `tariff_id` INT NOT NULL COMMENT '費率ID',
   `applied_price` DECIMAL(10,2) NOT NULL COMMENT '實際計費價格',
   `energy_consumed` DECIMAL(10,3) NOT NULL COMMENT '消耗電量(kWh)',
@@ -428,8 +427,8 @@ CREATE TABLE `billing_records` (
   KEY `idx_status` (`status`),
   KEY `idx_start_time` (`start_time`),
   KEY `idx_invoice_number` (`invoice_number`),
+  CONSTRAINT `fk_billing_records_transaction_id` FOREIGN KEY (`transaction_id`) REFERENCES `charging_transactions` (`transaction_id`),
   CONSTRAINT `fk_billing_records_tariff_id` FOREIGN KEY (`tariff_id`) REFERENCES `tariffs` (`id`),
-  CONSTRAINT `fk_billing_records_transaction_ref` FOREIGN KEY (`transaction_ref`) REFERENCES `charging_transactions` (`id`),
   CONSTRAINT `fk_billing_records_payment_method` FOREIGN KEY (`payment_method`) REFERENCES `billing_channels` (`code`),
   CONSTRAINT `fk_billing_records_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -461,6 +460,15 @@ ON DUPLICATE KEY UPDATE
   `balance` = VALUES(`balance`),
   `updatedAt` = NOW();
 
+-- 插入管理員用戶的錢包資料
+INSERT INTO `user_wallets` (`user_id`, `balance`, `currency`, `status`, `createdAt`, `updatedAt`)
+SELECT u.uuid, 5000.00, 'TWD', 'ACTIVE', NOW(), NOW()
+FROM `users` u
+WHERE u.email = 'evape@gmail.com'
+ON DUPLICATE KEY UPDATE
+  `balance` = VALUES(`balance`),
+  `updatedAt` = NOW();
+
 --
 -- Table structure for table `rfid_cards`
 --
@@ -488,6 +496,15 @@ INSERT INTO `rfid_cards` (`card_number`, `user_id`, `card_type`, `status`, `issu
 SELECT 'RFID001', u.uuid, 'RFID', 'ACTIVE', NOW(), NOW(), NOW()
 FROM `users` u
 WHERE u.email = 'user@gmail.com'
+ON DUPLICATE KEY UPDATE
+  `status` = VALUES(`status`),
+  `updatedAt` = NOW();
+
+-- 插入管理員用戶的RFID卡資料
+INSERT INTO `rfid_cards` (`card_number`, `user_id`, `card_type`, `status`, `issued_at`, `createdAt`, `updatedAt`)
+SELECT 'RFID002', u.uuid, 'RFID', 'ACTIVE', NOW(), NOW(), NOW()
+FROM `users` u
+WHERE u.email = 'evape@gmail.com'
 ON DUPLICATE KEY UPDATE
   `status` = VALUES(`status`),
   `updatedAt` = NOW();
@@ -545,6 +562,26 @@ SELECT
 FROM `users` u
 JOIN `user_wallets` w ON u.uuid = w.user_id
 WHERE u.email = 'user@gmail.com'
+ON DUPLICATE KEY UPDATE
+  `status` = VALUES(`status`);
+
+-- 插入管理員用戶的初始儲值交易記錄
+INSERT INTO `wallet_transactions` (`user_id`, `wallet_id`, `transaction_type`, `amount`, `balance_before`, `balance_after`, `payment_method`, `description`, `status`, `createdAt`, `updatedAt`)
+SELECT 
+  u.uuid,
+  w.id,
+  'DEPOSIT',
+  5000.00,
+  0.00,
+  5000.00,
+  'linepay',
+  '管理員初始儲值',
+  'COMPLETED',
+  NOW(),
+  NOW()
+FROM `users` u
+JOIN `user_wallets` w ON u.uuid = w.user_id
+WHERE u.email = 'evape@gmail.com'
 ON DUPLICATE KEY UPDATE
   `status` = VALUES(`status`);
 
