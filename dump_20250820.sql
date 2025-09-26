@@ -603,6 +603,79 @@ CREATE TABLE `cp_logs` (
 ) ENGINE=InnoDB AUTO_INCREMENT=837 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
+-- Table structure for table `fault_reports`
+--
+DROP TABLE IF EXISTS `fault_reports`;
+CREATE TABLE `fault_reports` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `cpid` VARCHAR(255) NOT NULL COMMENT '充電樁ID',
+  `cpsn` VARCHAR(255) NOT NULL COMMENT '充電樁序號',
+  `connector_id` INT DEFAULT NULL COMMENT '接頭ID (可空，如果是整個樁的故障)',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '回報用戶UUID',
+  `fault_type` ENUM('POWER_FAILURE','COMMUNICATION_ERROR','HARDWARE_DAMAGE','SOFTWARE_ERROR','OVERHEAT','OTHER') NOT NULL COMMENT '故障類型',
+  `severity` ENUM('LOW','MEDIUM','HIGH','CRITICAL') NOT NULL DEFAULT 'MEDIUM' COMMENT '嚴重程度',
+  `description` TEXT NOT NULL COMMENT '故障描述',
+  `status` ENUM('REPORTED','UNDER_REVIEW','IN_PROGRESS','RESOLVED','CLOSED') NOT NULL DEFAULT 'REPORTED' COMMENT '處理狀態',
+  `assigned_to` VARCHAR(36) DEFAULT NULL COMMENT '指派處理人員UUID',
+  `resolution` TEXT COMMENT '解決方案',
+  `reported_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '回報時間',
+  `resolved_at` DATETIME DEFAULT NULL COMMENT '解決時間',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  KEY `idx_cpid` (`cpid`),
+  KEY `idx_cpsn` (`cpsn`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_severity` (`severity`),
+  KEY `idx_reported_at` (`reported_at`),
+  CONSTRAINT `fk_fault_reports_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`),
+  CONSTRAINT `fk_fault_reports_assigned_user` FOREIGN KEY (`assigned_to`) REFERENCES `users` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
+-- Table structure for table `maintenance_records`
+--
+DROP TABLE IF EXISTS `maintenance_records`;
+CREATE TABLE `maintenance_records` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `cpid` VARCHAR(255) NOT NULL COMMENT '充電樁ID',
+  `cpsn` VARCHAR(255) NOT NULL COMMENT '充電樁序號',
+  `connector_id` INT DEFAULT NULL COMMENT '接頭ID (可空，如果是整個樁的維護)',
+  `maintenance_type` ENUM('ROUTINE','REPAIR','UPGRADE','INSPECTION','CLEANING','OTHER') NOT NULL COMMENT '維護類型',
+  `priority` ENUM('LOW','NORMAL','HIGH','URGENT') NOT NULL DEFAULT 'NORMAL' COMMENT '優先級',
+  `description` TEXT NOT NULL COMMENT '維護描述',
+  `scheduled_date` DATETIME DEFAULT NULL COMMENT '預定維護日期',
+  `actual_start_date` DATETIME DEFAULT NULL COMMENT '實際開始時間',
+  `actual_end_date` DATETIME DEFAULT NULL COMMENT '實際完成時間',
+  `technician_id` VARCHAR(36) DEFAULT NULL COMMENT '維護技師UUID',
+  `technician_name` VARCHAR(100) DEFAULT NULL COMMENT '維護技師姓名',
+  `parts_used` TEXT COMMENT '使用的零件',
+  `labor_cost` DECIMAL(10,2) DEFAULT NULL COMMENT '人工費用',
+  `parts_cost` DECIMAL(10,2) DEFAULT NULL COMMENT '零件費用',
+  `total_cost` DECIMAL(10,2) DEFAULT NULL COMMENT '總費用',
+  `currency` VARCHAR(3) NOT NULL DEFAULT 'TWD' COMMENT '貨幣',
+  `status` ENUM('SCHEDULED','IN_PROGRESS','COMPLETED','CANCELLED','FAILED') NOT NULL DEFAULT 'SCHEDULED' COMMENT '維護狀態',
+  `result` TEXT COMMENT '維護結果',
+  `next_maintenance_date` DATETIME DEFAULT NULL COMMENT '下次維護日期',
+  `remarks` TEXT COMMENT '備註',
+  `created_by` VARCHAR(36) DEFAULT NULL COMMENT '建立者UUID',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  KEY `idx_cpid` (`cpid`),
+  KEY `idx_cpsn` (`cpsn`),
+  KEY `idx_maintenance_type` (`maintenance_type`),
+  KEY `idx_status` (`status`),
+  KEY `idx_scheduled_date` (`scheduled_date`),
+  KEY `idx_actual_start_date` (`actual_start_date`),
+  KEY `idx_technician_id` (`technician_id`),
+  KEY `idx_created_by` (`created_by`),
+  CONSTRAINT `fk_maintenance_records_technician_uuid` FOREIGN KEY (`technician_id`) REFERENCES `users` (`uuid`),
+  CONSTRAINT `fk_maintenance_records_created_by_uuid` FOREIGN KEY (`created_by`) REFERENCES `users` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+--
 -- Table structure for table `operation_logs`
 --
 DROP TABLE IF EXISTS `operation_logs`;

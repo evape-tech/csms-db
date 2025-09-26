@@ -101,7 +101,7 @@ INSERT INTO dbo.tariffs
  discount_percentage, promotion_code, valid_from, valid_to,
  season_start_month, season_end_month, season_type,
  grace_period_minutes, penalty_rate_per_hour,
- ac_only, dc_only, membership_required, is_active, created_by, createdAt, updatedAt)
+ ac_only, dc_only, membership_required, is_active, is_default, created_by, createdAt, updatedAt)
 VALUES
 (N'標準費率', N'適用于所有充電站的基本固定單價費率', N'FIXED_RATE', 2.50, 5.00,
  NULL, NULL, NULL, NULL, NULL,
@@ -109,7 +109,7 @@ VALUES
  NULL, NULL, NULL, NULL,
  NULL, NULL, N'ALL_YEAR',
  15, 8.00,
- 0, 0, 0, 1, N'system', GETDATE(), GETDATE()),
+ 0, 0, 0, 1, 1, N'system', GETDATE(), GETDATE()),
 
 (N'峰谷電價', N'根據時段不同收取不同費用的分時費率', N'TIME_OF_USE', 2.80, 4.50,
  N'09:00', N'22:00', 3.50, 1.80, 2.20,
@@ -175,7 +175,7 @@ VALUES
  15, 8.00,
  0, 0, 0, 1, 0, N'system', GETDATE(), GETDATE()),
 
-(N'自訂季節費率', N'自訂月份範圍的費率示例 (3-5月)', N'TIME_OF_USE', 2.80,
+(N'自訂季節費率', N'自訂月份範圍的費率示例 (3-5月)', N'TIME_OF_USE', 2.80, 4.00,
  N'09:00', N'22:00', 3.50, 2.00, 2.50,
  NULL, NULL, NULL, NULL, NULL,
  NULL, NULL, NULL, NULL,
@@ -752,6 +752,130 @@ EXEC sp_addextendedproperty 'MS_Description','進出狀態', 'SCHEMA','dbo','TAB
 EXEC sp_addextendedproperty 'MS_Description','記錄時間', 'SCHEMA','dbo','TABLE','cp_logs','COLUMN','time';
 EXEC sp_addextendedproperty 'MS_Description','創建時間', 'SCHEMA','dbo','TABLE','cp_logs','COLUMN','createdAt';
 EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','cp_logs','COLUMN','updatedAt';
+GO
+
+-- 創建 fault_reports 表
+IF OBJECT_ID(N'dbo.fault_reports', N'U') IS NOT NULL
+    DROP TABLE dbo.fault_reports;
+GO
+
+CREATE TABLE dbo.fault_reports (
+    id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    cpid NVARCHAR(255) NOT NULL,
+    cpsn NVARCHAR(255) NOT NULL,
+    connector_id INT NULL,
+    user_id NVARCHAR(36) NOT NULL,
+    fault_type NVARCHAR(30) NOT NULL CHECK (fault_type IN (N'POWER_FAILURE', N'COMMUNICATION_ERROR', N'HARDWARE_DAMAGE', N'SOFTWARE_ERROR', N'OVERHEAT', N'OTHER')),
+    severity NVARCHAR(10) NOT NULL DEFAULT N'MEDIUM' CHECK (severity IN (N'LOW', N'MEDIUM', N'HIGH', N'CRITICAL')),
+    description NVARCHAR(MAX) NOT NULL,
+    status NVARCHAR(15) NOT NULL DEFAULT N'REPORTED' CHECK (status IN (N'REPORTED', N'UNDER_REVIEW', N'IN_PROGRESS', N'RESOLVED', N'CLOSED')),
+    assigned_to NVARCHAR(36) NULL,
+    resolution NVARCHAR(MAX) NULL,
+    reported_at DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    resolved_at DATETIME2(0) NULL,
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_fault_reports_user_uuid FOREIGN KEY (user_id) REFERENCES dbo.users(uuid),
+    CONSTRAINT FK_fault_reports_assigned_user FOREIGN KEY (assigned_to) REFERENCES dbo.users(uuid)
+);
+GO
+
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','充電樁ID', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','cpid';
+EXEC sp_addextendedproperty 'MS_Description','充電樁序號', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','cpsn';
+EXEC sp_addextendedproperty 'MS_Description','接頭ID', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','connector_id';
+EXEC sp_addextendedproperty 'MS_Description','回報用戶UUID', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','user_id';
+EXEC sp_addextendedproperty 'MS_Description','故障類型', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','fault_type';
+EXEC sp_addextendedproperty 'MS_Description','嚴重程度', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','severity';
+EXEC sp_addextendedproperty 'MS_Description','故障描述', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','description';
+EXEC sp_addextendedproperty 'MS_Description','處理狀態', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','status';
+EXEC sp_addextendedproperty 'MS_Description','指派處理人員UUID', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','assigned_to';
+EXEC sp_addextendedproperty 'MS_Description','解決方案', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','resolution';
+EXEC sp_addextendedproperty 'MS_Description','回報時間', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','reported_at';
+EXEC sp_addextendedproperty 'MS_Description','解決時間', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','resolved_at';
+EXEC sp_addextendedproperty 'MS_Description','建立時間', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','fault_reports','COLUMN','updatedAt';
+GO
+
+-- 為 fault_reports 表創建索引
+CREATE INDEX IX_fault_reports_cpid ON dbo.fault_reports(cpid);
+CREATE INDEX IX_fault_reports_cpsn ON dbo.fault_reports(cpsn);
+CREATE INDEX IX_fault_reports_user_id ON dbo.fault_reports(user_id);
+CREATE INDEX IX_fault_reports_status ON dbo.fault_reports(status);
+CREATE INDEX IX_fault_reports_severity ON dbo.fault_reports(severity);
+CREATE INDEX IX_fault_reports_reported_at ON dbo.fault_reports(reported_at);
+GO
+
+-- 創建 maintenance_records 表
+IF OBJECT_ID(N'dbo.maintenance_records', N'U') IS NOT NULL
+    DROP TABLE dbo.maintenance_records;
+GO
+
+CREATE TABLE dbo.maintenance_records (
+    id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    cpid NVARCHAR(255) NOT NULL,
+    cpsn NVARCHAR(255) NOT NULL,
+    connector_id INT NULL,
+    maintenance_type NVARCHAR(20) NOT NULL CHECK (maintenance_type IN (N'ROUTINE', N'REPAIR', N'UPGRADE', N'INSPECTION', N'CLEANING', N'OTHER')),
+    priority NVARCHAR(10) NOT NULL DEFAULT N'NORMAL' CHECK (priority IN (N'LOW', N'NORMAL', N'HIGH', N'URGENT')),
+    description NVARCHAR(MAX) NOT NULL,
+    scheduled_date DATETIME2(0) NULL,
+    actual_start_date DATETIME2(0) NULL,
+    actual_end_date DATETIME2(0) NULL,
+    technician_id NVARCHAR(36) NULL,
+    technician_name NVARCHAR(100) NULL,
+    parts_used NVARCHAR(MAX) NULL,
+    labor_cost DECIMAL(10,2) NULL,
+    parts_cost DECIMAL(10,2) NULL,
+    total_cost DECIMAL(10,2) NULL,
+    currency NVARCHAR(3) NOT NULL DEFAULT N'TWD',
+    status NVARCHAR(15) NOT NULL DEFAULT N'SCHEDULED' CHECK (status IN (N'SCHEDULED', N'IN_PROGRESS', N'COMPLETED', N'CANCELLED', N'FAILED')),
+    result NVARCHAR(MAX) NULL,
+    next_maintenance_date DATETIME2(0) NULL,
+    remarks NVARCHAR(MAX) NULL,
+    created_by NVARCHAR(36) NULL,
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT FK_maintenance_records_technician_uuid FOREIGN KEY (technician_id) REFERENCES dbo.users(uuid),
+    CONSTRAINT FK_maintenance_records_created_by_uuid FOREIGN KEY (created_by) REFERENCES dbo.users(uuid)
+);
+GO
+
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','充電樁ID', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','cpid';
+EXEC sp_addextendedproperty 'MS_Description','充電樁序號', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','cpsn';
+EXEC sp_addextendedproperty 'MS_Description','接頭ID', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','connector_id';
+EXEC sp_addextendedproperty 'MS_Description','維護類型', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','maintenance_type';
+EXEC sp_addextendedproperty 'MS_Description','優先級', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','priority';
+EXEC sp_addextendedproperty 'MS_Description','維護描述', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','description';
+EXEC sp_addextendedproperty 'MS_Description','預定維護日期', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','scheduled_date';
+EXEC sp_addextendedproperty 'MS_Description','實際開始時間', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','actual_start_date';
+EXEC sp_addextendedproperty 'MS_Description','實際完成時間', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','actual_end_date';
+EXEC sp_addextendedproperty 'MS_Description','維護技師UUID', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','technician_id';
+EXEC sp_addextendedproperty 'MS_Description','維護技師姓名', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','technician_name';
+EXEC sp_addextendedproperty 'MS_Description','使用的零件', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','parts_used';
+EXEC sp_addextendedproperty 'MS_Description','人工費用', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','labor_cost';
+EXEC sp_addextendedproperty 'MS_Description','零件費用', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','parts_cost';
+EXEC sp_addextendedproperty 'MS_Description','總費用', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','total_cost';
+EXEC sp_addextendedproperty 'MS_Description','貨幣', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','currency';
+EXEC sp_addextendedproperty 'MS_Description','維護狀態', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','status';
+EXEC sp_addextendedproperty 'MS_Description','維護結果', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','result';
+EXEC sp_addextendedproperty 'MS_Description','下次維護日期', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','next_maintenance_date';
+EXEC sp_addextendedproperty 'MS_Description','備註', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','remarks';
+EXEC sp_addextendedproperty 'MS_Description','建立者UUID', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','created_by';
+EXEC sp_addextendedproperty 'MS_Description','建立時間', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','maintenance_records','COLUMN','updatedAt';
+GO
+
+-- 為 maintenance_records 表創建索引
+CREATE INDEX IX_maintenance_records_cpid ON dbo.maintenance_records(cpid);
+CREATE INDEX IX_maintenance_records_cpsn ON dbo.maintenance_records(cpsn);
+CREATE INDEX IX_maintenance_records_maintenance_type ON dbo.maintenance_records(maintenance_type);
+CREATE INDEX IX_maintenance_records_status ON dbo.maintenance_records(status);
+CREATE INDEX IX_maintenance_records_scheduled_date ON dbo.maintenance_records(scheduled_date);
+CREATE INDEX IX_maintenance_records_actual_start_date ON dbo.maintenance_records(actual_start_date);
+CREATE INDEX IX_maintenance_records_technician_id ON dbo.maintenance_records(technician_id);
+CREATE INDEX IX_maintenance_records_created_by ON dbo.maintenance_records(created_by);
 GO
 
 -- 創建 user_wallets 表
