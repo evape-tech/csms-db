@@ -570,9 +570,9 @@ EXEC sp_addextendedproperty 'MS_Description','充電樁序號', 'SCHEMA','dbo','
 EXEC sp_addextendedproperty 'MS_Description','充電槍ID', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','connector_id';
 EXEC sp_addextendedproperty 'MS_Description','用戶UUID', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','user_id';
 EXEC sp_addextendedproperty 'MS_Description','身份識別ID Tag', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','id_tag';
-EXEC sp_addextendedproperty 'MS_Description','電表起始數值', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','meter_start';
-EXEC sp_addextendedproperty 'MS_Description','電表結束數值', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','meter_stop';
-EXEC sp_addextendedproperty 'MS_Description','消耗電量', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','energy_consumed';
+EXEC sp_addextendedproperty 'MS_Description','電表起始數值(kWh)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','meter_start';
+EXEC sp_addextendedproperty 'MS_Description','電表結束數值(kWh)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','meter_stop';
+EXEC sp_addextendedproperty 'MS_Description','消耗電量(kWh)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','energy_consumed';
 EXEC sp_addextendedproperty 'MS_Description','當前功率(kW)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','current_power';
 EXEC sp_addextendedproperty 'MS_Description','當前電壓(V)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','current_voltage';
 EXEC sp_addextendedproperty 'MS_Description','當前電流(A)', 'SCHEMA','dbo','TABLE','charging_transactions','COLUMN','current_current';
