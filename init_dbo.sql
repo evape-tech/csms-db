@@ -202,7 +202,56 @@ BEGIN
 END;
 GO
 
-/****** Table: stations ******/
+/****** Table: charging_standards ******/
+IF OBJECT_ID(N'dbo.charging_standards', N'U') IS NOT NULL
+    DROP TABLE dbo.charging_standards;
+GO
+
+CREATE TABLE dbo.charging_standards (
+    id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    name NVARCHAR(100) NOT NULL,
+    code NVARCHAR(20) NOT NULL UNIQUE,
+    charging_type NVARCHAR(2) NOT NULL CHECK (charging_type IN (N'AC', N'DC')),
+    description NVARCHAR(255) NULL,
+    is_active BIT NOT NULL DEFAULT 1,
+    createdAt DATETIME2(0) NOT NULL DEFAULT GETDATE(),
+    updatedAt DATETIME2(0) NOT NULL DEFAULT GETDATE()
+);
+GO
+
+EXEC sp_addextendedproperty 'MS_Description','主鍵ID', 'SCHEMA','dbo','TABLE','charging_standards','COLUMN','id';
+EXEC sp_addextendedproperty 'MS_Description','插頭名稱', 'SCHEMA','dbo','TABLE','charging_standards','COLUMN','name';
+EXEC sp_addextendedproperty 'MS_Description','插頭代碼', 'SCHEMA','dbo','TABLE','charging_standards','COLUMN','code';
+EXEC sp_addextendedproperty 'MS_Description','充電類型', 'SCHEMA','dbo','TABLE','charging_standards','COLUMN','charging_type';
+EXEC sp_addextendedproperty 'MS_Description','描述', 'SCHEMA','dbo','TABLE','charging_standards','COLUMN','description';
+EXEC sp_addextendedproperty 'MS_Description','是否啟用', 'SCHEMA','dbo','TABLE','charging_standards','COLUMN','is_active';
+EXEC sp_addextendedproperty 'MS_Description','建立時間', 'SCHEMA','dbo','TABLE','charging_standards','COLUMN','createdAt';
+EXEC sp_addextendedproperty 'MS_Description','更新時間', 'SCHEMA','dbo','TABLE','charging_standards','COLUMN','updatedAt';
+GO
+
+-- 插入充電插頭資料
+INSERT INTO dbo.charging_standards (name, code, charging_type, description, is_active, createdAt, updatedAt) VALUES
+(N'J1772', N'J1772', N'AC', N'SAE J1772 Type 1 交流充電插頭', 1, GETDATE(), GETDATE()),
+(N'CCS1', N'CCS1', N'DC', N'CCS Type 1 組合充電插頭', 1, GETDATE(), GETDATE()),
+(N'CCS2', N'CCS2', N'DC', N'CCS Type 2 組合充電插頭', 1, GETDATE(), GETDATE());
+GO
+
+CREATE INDEX IX_charging_standards_code ON dbo.charging_standards(code);
+CREATE INDEX IX_charging_standards_charging_type ON dbo.charging_standards(charging_type);
+CREATE INDEX IX_charging_standards_is_active ON dbo.charging_standards(is_active);
+GO
+
+-- 為 charging_standards 表創建觸發器來自動更新 updatedAt
+CREATE TRIGGER TR_charging_standards_update_timestamp
+ON dbo.charging_standards
+AFTER UPDATE
+AS
+BEGIN
+    UPDATE dbo.charging_standards
+    SET updatedAt = GETDATE()
+    WHERE id IN (SELECT id FROM inserted);
+END;
+GO
 IF OBJECT_ID(N'dbo.stations', N'U') IS NOT NULL
     DROP TABLE dbo.stations;
 GO
@@ -306,8 +355,10 @@ CREATE TABLE dbo.guns (
     transactionid NVARCHAR(255) NULL,
     acdc NVARCHAR(2) NULL DEFAULT N'AC',
     max_kw INT NULL DEFAULT 0,
+    charging_standard_id INT NULL,
     meter_id INT NULL,
     CONSTRAINT FK_guns_meter FOREIGN KEY (meter_id) REFERENCES dbo.meters(id),
+    CONSTRAINT FK_guns_charging_standard FOREIGN KEY (charging_standard_id) REFERENCES dbo.charging_standards(id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 GO
 
@@ -330,6 +381,7 @@ EXEC sp_addextendedproperty 'MS_Description','備註2', 'SCHEMA','dbo','TABLE','
 EXEC sp_addextendedproperty 'MS_Description','交易ID', 'SCHEMA','dbo','TABLE','guns','COLUMN','transactionid';
 EXEC sp_addextendedproperty 'MS_Description','AC/DC類型', 'SCHEMA','dbo','TABLE','guns','COLUMN','acdc';
 EXEC sp_addextendedproperty 'MS_Description','最大功率(kW)', 'SCHEMA','dbo','TABLE','guns','COLUMN','max_kw';
+EXEC sp_addextendedproperty 'MS_Description','充電標準ID (charging_standards.id)', 'SCHEMA','dbo','TABLE','guns','COLUMN','charging_standard_id';
 EXEC sp_addextendedproperty 'MS_Description','對應電表ID', 'SCHEMA','dbo','TABLE','guns','COLUMN','meter_id';
 GO
 
@@ -339,23 +391,24 @@ CREATE INDEX IX_guns_cpsn ON dbo.guns(cpsn);
 CREATE INDEX IX_guns_connector ON dbo.guns(connector);
 CREATE INDEX IX_guns_guns_status ON dbo.guns(guns_status);
 CREATE INDEX IX_guns_meter_id ON dbo.guns(meter_id);
+CREATE INDEX IX_guns_charging_standard_id ON dbo.guns(charging_standard_id);
 CREATE INDEX IX_guns_acdc ON dbo.guns(acdc);
 GO
 
 -- 插入預設充電槍資料 (總共7個槍：3個AC槍 + 4個DC槍)
 IF NOT EXISTS (SELECT 1 FROM dbo.guns WHERE cpid = N'1000' AND connector = N'1')
 BEGIN
-    INSERT INTO dbo.guns (connector, cpid, cpsn, guns_status, createdAt, updatedAt, acdc, max_kw, meter_id) VALUES
-    -- AC槍 (CP001-CP003，每個充電站1個AC槍)
-    (N'1', N'1000', N'CP001', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, 1),
-    (N'1', N'1001', N'CP002', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, 1),
-    (N'1', N'1002', N'CP003', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, 1),
+    INSERT INTO dbo.guns (connector, cpid, cpsn, guns_status, createdAt, updatedAt, acdc, max_kw, charging_standard_id, meter_id) VALUES
+    -- AC槍 (CP001-CP003，每個充電站1個AC槍) - 使用 J1772 標準
+    (N'1', N'1000', N'CP001', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, (SELECT id FROM dbo.charging_standards WHERE code = N'J1772'), 1),
+    (N'1', N'1001', N'CP002', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, (SELECT id FROM dbo.charging_standards WHERE code = N'J1772'), 1),
+    (N'1', N'1002', N'CP003', N'Unavailable', GETDATE(), GETDATE(), N'AC', 7, (SELECT id FROM dbo.charging_standards WHERE code = N'J1772'), 1),
 
-    -- DC槍 (CP004-CP005，每個充電站2個DC槍，connector 1和2)
-    (N'1', N'1003', N'CP004', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, 1),
-    (N'2', N'1004', N'CP004', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, 1),
-    (N'1', N'1005', N'CP005', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, 1),
-    (N'2', N'1006', N'CP005', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, 1);
+    -- DC槍 (CP004-CP005，每個充電站2個DC槍，connector 1和2) - 使用 CCS2 標準
+    (N'1', N'1003', N'CP004', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, (SELECT id FROM dbo.charging_standards WHERE code = N'CCS1'), 1),
+    (N'2', N'1004', N'CP004', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, (SELECT id FROM dbo.charging_standards WHERE code = N'CCS2'), 1),
+    (N'1', N'1005', N'CP005', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, (SELECT id FROM dbo.charging_standards WHERE code = N'CCS1'), 1),
+    (N'2', N'1006', N'CP005', N'Unavailable', GETDATE(), GETDATE(), N'DC', 120, (SELECT id FROM dbo.charging_standards WHERE code = N'CCS2'), 1);
 END
 GO
 

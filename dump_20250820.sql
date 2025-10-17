@@ -193,6 +193,38 @@ INSERT INTO `meters` (`station_id`, `meter_no`, `ems_mode`, `max_power_kw`, `bil
 VALUES
 (1, 'MTR001', 'static', 480.00, 'independent', NULL, NOW());
 
+
+--
+-- Table structure for table `charging_standards`
+--
+DROP TABLE IF EXISTS `charging_standards`;
+CREATE TABLE `charging_standards` (
+  `id` INT NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '插頭名稱',
+  `code` VARCHAR(20) NOT NULL UNIQUE COMMENT '插頭代碼',
+  `charging_type` ENUM('AC','DC') NOT NULL COMMENT '充電類型',
+  `description` VARCHAR(255) DEFAULT NULL COMMENT '描述',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否啟用',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_code` (`code`),
+  KEY `idx_charging_type` (`charging_type`),
+  KEY `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 插入充電插頭資料
+INSERT INTO `charging_standards` (`name`, `code`, `charging_type`, `description`, `is_active`, `createdAt`, `updatedAt`) VALUES
+('J1772', 'J1772', 'AC', 'SAE J1772 Type 1 交流充電插頭', 1, NOW(), NOW()),
+('CCS1', 'CCS1', 'DC', 'CCS Type 1 組合充電插頭', 1, NOW(), NOW()),
+('CCS2', 'CCS2', 'DC', 'CCS Type 2 組合充電插頭', 1, NOW(), NOW())
+ON DUPLICATE KEY UPDATE
+  `name` = VALUES(`name`),
+  `charging_type` = VALUES(`charging_type`),
+  `description` = VALUES(`description`),
+  `is_active` = VALUES(`is_active`),
+  `updatedAt` = NOW();
+
 --
 -- Table structure for table `guns`
 --
@@ -217,27 +249,63 @@ CREATE TABLE `guns` (
   `transactionid` varchar(255) DEFAULT NULL COMMENT '交易ID',
   `acdc` ENUM('AC','DC') DEFAULT 'AC' COMMENT '充電型態 AC/DC',
   `max_kw` int DEFAULT 0 COMMENT '最大功率(kW)',
+  `charging_standard_id` INT DEFAULT NULL COMMENT '充電標準ID (charging_standards.id)',
   `meter_id` INT NOT NULL COMMENT '關聯電表ID (meters.id)',
   PRIMARY KEY (`id`),
   KEY `IX_guns_meter_id` (`meter_id`),
-  CONSTRAINT `fk_guns_meter` FOREIGN KEY (`meter_id`) REFERENCES `meters` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+  KEY `IX_guns_charging_standard_id` (`charging_standard_id`),
+  CONSTRAINT `fk_guns_meter` FOREIGN KEY (`meter_id`) REFERENCES `meters` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_guns_charging_standard` FOREIGN KEY (`charging_standard_id`) REFERENCES `charging_standards` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 插入預設充電槍資料 (總共7個槍：3個AC槍 + 4個DC槍)
-INSERT INTO `guns` (`connector`, `cpid`, `cpsn`, `guns_status`, `createdAt`, `updatedAt`, `acdc`, `max_kw`, `meter_id`) VALUES
--- AC槍 (CP001-CP003，每個充電站1個AC槍)
-('1', '1000', 'CP001', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, 1),
-('1', '1001', 'CP002', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, 1),
-('1', '1002', 'CP003', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, 1),
+INSERT INTO `guns` (`connector`, `cpid`, `cpsn`, `guns_status`, `createdAt`, `updatedAt`, `acdc`, `max_kw`, `charging_standard_id`, `meter_id`) VALUES
+-- AC槍 (CP001-CP003，每個充電站1個AC槍) - 使用 J1772 標準
+('1', '1000', 'CP001', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, (SELECT id FROM charging_standards WHERE code = 'J1772'), 1),
+('1', '1001', 'CP002', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, (SELECT id FROM charging_standards WHERE code = 'J1772'), 1),
+('1', '1002', 'CP003', 'Unavailable', CURDATE(), CURDATE(), 'AC', 7, (SELECT id FROM charging_standards WHERE code = 'J1772'), 1),
 
--- DC槍 (CP004-CP005，每個充電站2個DC槍，connector 1和2)
-('1', '1003', 'CP004', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, 1),
-('2', '1004', 'CP004', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, 1),
-('1', '1005', 'CP005', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, 1),
-('2', '1006', 'CP005', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, 1)
+-- DC槍 (CP004-CP005，每個充電站2個DC槍，connector 1和2) - 使用 CCS2 標準
+('1', '1003', 'CP004', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, (SELECT id FROM charging_standards WHERE code = 'CCS1'), 1),
+('2', '1004', 'CP004', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, (SELECT id FROM charging_standards WHERE code = 'CCS2'), 1),
+('1', '1005', 'CP005', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, (SELECT id FROM charging_standards WHERE code = 'CCS1'), 1),
+('2', '1006', 'CP005', 'Unavailable', CURDATE(), CURDATE(), 'DC', 120, (SELECT id FROM charging_standards WHERE code = 'CCS2'), 1)
 ON DUPLICATE KEY UPDATE
   `guns_status` = VALUES(`guns_status`),
+  `charging_standard_id` = VALUES(`charging_standard_id`),
   `updatedAt` = CURDATE();
+
+
+--
+-- Table structure for table `charging_standards`
+--
+DROP TABLE IF EXISTS `charging_standards`;
+CREATE TABLE `charging_standards` (
+  `id` INT NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '插頭名稱',
+  `code` VARCHAR(20) NOT NULL UNIQUE COMMENT '插頭代碼',
+  `charging_type` ENUM('AC','DC') NOT NULL COMMENT '充電類型',
+  `description` VARCHAR(255) DEFAULT NULL COMMENT '描述',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否啟用',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_code` (`code`),
+  KEY `idx_charging_type` (`charging_type`),
+  KEY `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 插入充電插頭資料
+INSERT INTO `charging_standards` (`name`, `code`, `charging_type`, `description`, `is_active`, `createdAt`, `updatedAt`) VALUES
+('J1772', 'J1772', 'AC', 'SAE J1772 Type 1 交流充電插頭', 1, NOW(), NOW()),
+('CCS1', 'CCS1', 'DC', 'CCS Type 1 組合充電插頭', 1, NOW(), NOW()),
+('CCS2', 'CCS2', 'DC', 'CCS Type 2 組合充電插頭', 1, NOW(), NOW())
+ON DUPLICATE KEY UPDATE
+  `name` = VALUES(`name`),
+  `charging_type` = VALUES(`charging_type`),
+  `description` = VALUES(`description`),
+  `is_active` = VALUES(`is_active`),
+  `updatedAt` = NOW();
 
 
 --
@@ -314,10 +382,7 @@ CREATE TABLE `users` (
 
 -- 插入初始資料 
 INSERT INTO `users` (`uuid`, `email`, `password`, `role`, `first_name`, `last_name`, `phone`, `date_of_birth`, `email_verified`, `account_status`, `createdAt`, `updatedAt`) VALUES
-('cc2bccd0-c979-11e9-ba8d-d70282892727', 'evape@gmail.com', '123456', 'admin', 'Admin', 'User', '0912345678', '1990-01-01', 1, 'ACTIVE', NOW(), NOW());
-
-INSERT INTO `users` (`uuid`, `email`, `password`, `role`, `first_name`, `last_name`, `phone`, `date_of_birth`, `email_verified`, `account_status`, `createdAt`, `updatedAt`) VALUES
-('cc2bccd0-c979-11e9-ba8d-d70282892728', 'user@gmail.com', '123456', 'user', '測試', '用戶', '0987654321', '1995-05-15', 1, 'ACTIVE', NOW(), NOW());
+('qfxzB1ieahqFlqfEPvvZ', 'evape@gmail.com', '123456', 'admin', 'Admin', 'User', '0912345678', '1990-01-01', 1, 'ACTIVE', NOW(), NOW());
 
 
 --
@@ -451,15 +516,6 @@ CREATE TABLE `user_wallets` (
   CONSTRAINT `fk_user_wallets_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- 插入測試用戶的錢包資料
-INSERT INTO `user_wallets` (`user_id`, `balance`, `currency`, `status`, `createdAt`, `updatedAt`)
-SELECT u.uuid, 1000.00, 'TWD', 'ACTIVE', NOW(), NOW()
-FROM `users` u
-WHERE u.email = 'user@gmail.com'
-ON DUPLICATE KEY UPDATE
-  `balance` = VALUES(`balance`),
-  `updatedAt` = NOW();
-
 -- 插入管理員用戶的錢包資料
 INSERT INTO `user_wallets` (`user_id`, `balance`, `currency`, `status`, `createdAt`, `updatedAt`)
 SELECT u.uuid, 5000.00, 'TWD', 'ACTIVE', NOW(), NOW()
@@ -490,15 +546,6 @@ CREATE TABLE `rfid_cards` (
   KEY `idx_status` (`status`),
   CONSTRAINT `fk_rfid_cards_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- 插入測試用戶的RFID卡資料
-INSERT INTO `rfid_cards` (`card_number`, `user_id`, `card_type`, `status`, `issued_at`, `createdAt`, `updatedAt`)
-SELECT 'RFID001', u.uuid, 'RFID', 'ACTIVE', NOW(), NOW(), NOW()
-FROM `users` u
-WHERE u.email = 'user@gmail.com'
-ON DUPLICATE KEY UPDATE
-  `status` = VALUES(`status`),
-  `updatedAt` = NOW();
 
 -- 插入管理員用戶的RFID卡資料
 INSERT INTO `rfid_cards` (`card_number`, `user_id`, `card_type`, `status`, `issued_at`, `createdAt`, `updatedAt`)
@@ -544,26 +591,6 @@ CREATE TABLE `wallet_transactions` (
   CONSTRAINT `fk_wallet_transactions_charging_transaction` FOREIGN KEY (`charging_transaction_id`) REFERENCES `charging_transactions` (`transaction_id`),
   CONSTRAINT `fk_wallet_transactions_payment_method` FOREIGN KEY (`payment_method`) REFERENCES `billing_channels` (`code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- 插入初始儲值交易記錄
-INSERT INTO `wallet_transactions` (`user_id`, `wallet_id`, `transaction_type`, `amount`, `balance_before`, `balance_after`, `payment_method`, `description`, `status`, `createdAt`, `updatedAt`)
-SELECT 
-  u.uuid,
-  w.id,
-  'DEPOSIT',
-  1000.00,
-  0.00,
-  1000.00,
-  'linepay',
-  '初始儲值',
-  'COMPLETED',
-  NOW(),
-  NOW()
-FROM `users` u
-JOIN `user_wallets` w ON u.uuid = w.user_id
-WHERE u.email = 'user@gmail.com'
-ON DUPLICATE KEY UPDATE
-  `status` = VALUES(`status`);
 
 -- 插入管理員用戶的初始儲值交易記錄
 INSERT INTO `wallet_transactions` (`user_id`, `wallet_id`, `transaction_type`, `amount`, `balance_before`, `balance_after`, `payment_method`, `description`, `status`, `createdAt`, `updatedAt`)
@@ -700,6 +727,128 @@ CREATE TABLE `operation_logs` (
   CONSTRAINT `fk_operation_logs_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+
+
+--
+-- Table structure for table `vehicle_brands`
+--
+DROP TABLE IF EXISTS `vehicle_brands`;
+CREATE TABLE `vehicle_brands` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `name` VARCHAR(100) NOT NULL COMMENT '品牌名稱',
+  `name_en` VARCHAR(100) DEFAULT NULL COMMENT '品牌英文名稱',
+  `logo_url` VARCHAR(255) DEFAULT NULL COMMENT '品牌Logo URL',
+  `country` VARCHAR(50) DEFAULT NULL COMMENT '品牌國家',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否啟用',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_name` (`name`),
+  KEY `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 插入電動車品牌資料
+INSERT INTO `vehicle_brands` (`name`, `name_en`, `country`, `is_active`) VALUES
+-- 美國品牌
+('特斯拉', 'Tesla', 'USA', 1),
+('福特', 'Ford', 'USA', 1),
+('雪佛蘭', 'Chevrolet', 'USA', 1),
+('Rivian', 'Rivian', 'USA', 1),
+('Lucid', 'Lucid Motors', 'USA', 1),
+
+-- 歐洲品牌
+('BMW', 'BMW', 'Germany', 1),
+('賓士', 'Mercedes-Benz', 'Germany', 1),
+('福斯', 'Volkswagen', 'Germany', 1),
+('奧迪', 'Audi', 'Germany', 1),
+('保時捷', 'Porsche', 'Germany', 1),
+('富豪', 'Volvo', 'Sweden', 1),
+('標緻', 'Peugeot', 'France', 1),
+('雷諾', 'Renault', 'France', 1),
+
+-- 日本品牌
+('日產', 'Nissan', 'Japan', 1),
+('三菱', 'Mitsubishi', 'Japan', 1),
+('馬自達', 'Mazda', 'Japan', 1),
+('本田', 'Honda', 'Japan', 1),
+('豐田', 'Toyota', 'Japan', 1),
+('速霸陸', 'Subaru', 'Japan', 1),
+
+-- 韓國品牌
+('現代', 'Hyundai', 'South Korea', 1),
+('起亞', 'Kia', 'South Korea', 1),
+
+-- 中國品牌
+('比亞迪', 'BYD', 'China', 1),
+('蔚來', 'NIO', 'China', 1),
+('小鵬', 'XPeng', 'China', 1),
+('理想', 'Li Auto', 'China', 1),
+('華為', 'Huawei AITO', 'China', 1),
+('吉利', 'Geely', 'China', 1),
+('長城', 'Great Wall Motors', 'China', 1),
+('上汽', 'SAIC Motor', 'China', 1),
+('極氪', 'Zeekr', 'China', 1),
+
+-- 台灣品牌
+('納智捷', 'Luxgen', 'Taiwan', 1),
+('中華汽車', 'CMC', 'Taiwan', 1),
+
+-- 印度品牌
+('塔塔', 'Tata Motors', 'India', 1)
+
+ON DUPLICATE KEY UPDATE
+  `name_en` = VALUES(`name_en`),
+  `country` = VALUES(`country`),
+  `is_active` = VALUES(`is_active`),
+  `updatedAt` = CURRENT_TIMESTAMP;
+
+--
+-- Table structure for table `user_vehicles`
+--
+DROP TABLE IF EXISTS `user_vehicles`;
+CREATE TABLE `user_vehicles` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '用戶UUID',
+  `brand_id` INT UNSIGNED NOT NULL COMMENT '品牌ID',
+  `model_name` VARCHAR(100) NOT NULL COMMENT '車型名稱',
+  `license_plate` VARCHAR(20) NOT NULL COMMENT '車牌號碼',
+  `nickname` VARCHAR(50) DEFAULT NULL COMMENT '車輛暱稱',
+  `color` VARCHAR(30) DEFAULT NULL COMMENT '車身顏色',
+  `model_year` YEAR DEFAULT NULL COMMENT '出廠年份',
+  `vin` VARCHAR(17) DEFAULT NULL COMMENT '車身號碼 (VIN)',
+  `purchase_date` DATE DEFAULT NULL COMMENT '購車日期',
+  `battery_capacity_kwh` DECIMAL(6,2) DEFAULT NULL COMMENT '電池容量(kWh)',
+  `status` ENUM('ACTIVE','INACTIVE','SOLD') NOT NULL DEFAULT 'ACTIVE' COMMENT '車輛狀態',
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_license_plate` (`license_plate`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_brand_id` (`brand_id`),
+  KEY `idx_status` (`status`),
+  CONSTRAINT `fk_user_vehicles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`),
+  CONSTRAINT `fk_user_vehicles_brand` FOREIGN KEY (`brand_id`) REFERENCES `vehicle_brands` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- 插入測試用戶車輛資料
+INSERT INTO `user_vehicles` (`user_id`, `brand_id`, `model_name`, `license_plate`, `nickname`, `color`, `model_year`, `battery_capacity_kwh`, `status`)
+SELECT 
+  u.uuid,
+  (SELECT id FROM vehicle_brands WHERE name = '特斯拉'),
+  'Model 3',
+  'ABC-1234',
+  '我的 Model 3',
+  '白色',
+  2024,
+  60.00,
+  'ACTIVE'
+FROM `users` u
+WHERE u.email = 'evape@gmail.com'
+ON DUPLICATE KEY UPDATE
+  `nickname` = VALUES(`nickname`),
+  `status` = VALUES(`status`);
+
+
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 
@@ -716,13 +865,3 @@ CREATE TABLE `operation_logs` (
 
 -- Dump completed on 2025-08-20  0:39:10
 
-DELIMITER //
-CREATE TRIGGER `generate_uuid` BEFORE INSERT ON `users`
-FOR EACH ROW
-BEGIN
-  IF NEW.`uuid` IS NULL THEN
-    SET NEW.`uuid` = UUID();
-  END IF;
-END;
-//
-DELIMITER ;
