@@ -422,6 +422,138 @@ CREATE TABLE `charging_transactions` (
   CONSTRAINT `fk_charging_transactions_user_uuid` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- 插入 500 筆平均分佈在 2025/09/28 ~ 2025/10/28 的充電交易資料
+INSERT INTO charging_transactions (
+  id, transaction_id, start_time, end_time, cpid, cpsn, connector_id,
+  user_id, id_tag, meter_start, meter_stop, energy_consumed,
+  current_power, current_voltage, current_current, last_meter_update,
+  charging_duration, status, stop_reason, createdAt, updatedAt
+)
+SELECT
+  n AS id,
+  CONCAT('TXN-', LPAD(n,6,'0'), '-', LEFT(UUID(),8)) AS transaction_id,
+
+  -- start_time 在 9/28~10/28 之間平均分佈
+  DATE_ADD('2025-09-28 00:00:00', INTERVAL (n * (60 * 24 * 31 / 500)) MINUTE) AS start_time,
+
+  -- end_time 為 start_time + (20~240 分鐘之間隨機的間隔)
+  DATE_ADD(
+    DATE_ADD('2025-09-28 00:00:00', INTERVAL (n * (60 * 24 * 31 / 500)) MINUTE),
+    INTERVAL (20 + (n * 37 % 220)) MINUTE
+  ) AS end_time,
+
+  CASE (n - 1) % 8
+    WHEN 0 THEN 'CP001'
+    WHEN 1 THEN 'CP002'
+    WHEN 2 THEN 'CP003'
+    WHEN 3 THEN 'CP004'
+    WHEN 4 THEN 'CP004'
+    WHEN 5 THEN 'CP005'
+    WHEN 6 THEN 'CP005'
+    WHEN 7 THEN '123'
+  END AS cpid,
+
+  CASE (n - 1) % 8
+    WHEN 0 THEN '1000'
+    WHEN 1 THEN '1001'
+    WHEN 2 THEN '1002'
+    WHEN 3 THEN '1003'
+    WHEN 4 THEN '1004'
+    WHEN 5 THEN '1005'
+    WHEN 6 THEN '1006'
+    WHEN 7 THEN '123'
+  END AS cpsn,
+
+  CASE (n - 1) % 8
+    WHEN 0 THEN 1
+    WHEN 1 THEN 1
+    WHEN 2 THEN 1
+    WHEN 3 THEN 1
+    WHEN 4 THEN 2
+    WHEN 5 THEN 1
+    WHEN 6 THEN 2
+    WHEN 7 THEN 1
+  END AS connector_id,
+
+  -- 循環使用 10 位 user uuid
+  ELT( ((n-1) % 10) + 1,
+    '550e8400-e29b-41d4-a716-446655440000',
+    '550e8400-e29b-41d4-a716-446655440001',
+    '550e8400-e29b-41d4-a716-446655440002',
+    '550e8400-e29b-41d4-a716-446655440003',
+    '550e8400-e29b-41d4-a716-446655440004',
+    '550e8400-e29b-41d4-a716-446655440005',
+    '550e8400-e29b-41d4-a716-446655440006',
+    '550e8400-e29b-41d4-a716-446655440007',
+    '550e8400-e29b-41d4-a716-446655440008',
+    '550e8400-e29b-41d4-a716-446655440009'
+  ) AS user_id,
+
+  CONCAT('TAG', LPAD(n,6,'0')) AS id_tag,
+
+  ROUND(5000 + n * 0.85, 3) AS meter_start,
+  ROUND(5000 + n * 0.85 + (0.3 + ((n * 13) % 300) / 10.0), 3) AS meter_stop,
+  ROUND((0.3 + ((n * 13) % 300) / 10.0), 3) AS energy_consumed,
+
+  ROUND( (CASE (n % 6)
+            WHEN 0 THEN 7
+            WHEN 1 THEN 11
+            WHEN 2 THEN 22
+            WHEN 3 THEN 50
+            WHEN 4 THEN 120
+            ELSE 3 END) * (0.8 + ((n % 5) * 0.05)), 3) AS current_power,
+
+  ROUND(220 + ((n % 9) - 4) * 0.7, 2) AS current_voltage,
+
+  ROUND((CASE (n % 6)
+           WHEN 0 THEN 10
+           WHEN 1 THEN 16
+           WHEN 2 THEN 40
+           WHEN 3 THEN 90
+           WHEN 4 THEN 300
+           ELSE 6 END) * (0.9 + ((n % 7) * 0.03)), 2) AS current_current,
+
+  -- 最後一次電表更新時間（在 start_time 與 end_time 之間）
+  DATE_ADD(
+    DATE_ADD('2025-09-28 00:00:00', INTERVAL (n * (60 * 24 * 31 / 500)) MINUTE),
+    INTERVAL ((n * 29) % 91) MINUTE
+  ) AS last_meter_update,
+
+  ((20 + (n * 37 % 220)) * 60) AS charging_duration,
+
+  'COMPLETED' AS status,
+  '正常完成' AS stop_reason,
+
+  DATE_SUB(
+    DATE_ADD('2025-09-28 00:00:00', INTERVAL (n * (60 * 24 * 31 / 500)) MINUTE),
+    INTERVAL 5 MINUTE
+  ) AS createdAt,
+
+  DATE_ADD(
+    DATE_SUB(
+      DATE_ADD('2025-09-28 00:00:00', INTERVAL (n * (60 * 24 * 31 / 500)) MINUTE),
+      INTERVAL 5 MINUTE
+    ),
+    INTERVAL ((n * 3) % 1440) MINUTE
+  ) AS updatedAt
+
+FROM (
+  SELECT @row := @row + 1 AS n
+  FROM (SELECT 0 UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+        UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+        UNION ALL SELECT 8 UNION ALL SELECT 9) a,
+       (SELECT 0 UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+        UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7
+        UNION ALL SELECT 8 UNION ALL SELECT 9) b,
+       (SELECT 0 UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3
+        UNION ALL SELECT 4 UNION ALL SELECT 5) c,  -- 10×10×6=600 筆
+       (SELECT @row := 0) r
+  LIMIT 500
+) t;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+
 --
 -- Table structure for table `billing_channels`
 --
