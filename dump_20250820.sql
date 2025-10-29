@@ -573,8 +573,10 @@ CREATE TABLE `billing_channels` (
 INSERT INTO `billing_channels` (`name`, `code`, `status`, `config`)
 VALUES
 ('信用卡', 'credit_card', 1, NULL),
-('RFID', 'rfid', 1, NULL),
-('Line Pay', 'linepay', 1, NULL)
+('Line Pay', 'line_pay', 1, NULL),
+('悠遊付', 'easy_wallet', 1, NULL),
+('全盈 pay', 'plus_pay', 1, NULL)
+
 ON DUPLICATE KEY UPDATE
   `name` = VALUES(`name`),
   `status` = VALUES(`status`),
