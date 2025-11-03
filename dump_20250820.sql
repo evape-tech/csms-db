@@ -922,6 +922,7 @@ INSERT INTO `vehicle_brands` (`name`, `name_en`, `country`, `is_active`) VALUES
 ('長城', 'Great Wall Motors', 'China', 1),
 ('上汽', 'SAIC Motor', 'China', 1),
 ('極氪', 'Zeekr', 'China', 1),
+('小米', 'Xiaomi', 'China', 1),
 
 -- 台灣品牌
 ('納智捷', 'Luxgen', 'Taiwan', 1),
