@@ -32,6 +32,8 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: mssql_server
     restart: always
+    profiles:
+      - mssql
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "Evpe_123456"
@@ -47,21 +49,13 @@ services:
     container_name: mssql_init_runner
     depends_on:
       - mssql
+    profiles:
+      - mssql
     volumes:
       - ./init_dbo.sql:/init_dbo.sql:ro
     entrypoint: /bin/bash
     command: -c "until /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Evpe_123456' -Q 'SELECT 1' >/dev/null 2>&1; do echo 'waiting mssql...'; sleep 1; done; /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Evpe_123456' -i /init_dbo.sql"
     restart: "no"
-    networks:
-      - backend_net
-
-  # Adminer
-  adminer:
-    image: adminer
-    container_name: adminer
-    restart: always
-    ports:
-      - "8080:8080"
     networks:
       - backend_net
 
