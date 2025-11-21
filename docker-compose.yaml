@@ -43,29 +43,9 @@ services:
     networks:
       - backend_net
 
-  # Caddy reverse proxy
-  caddy:
-    image: caddy:2
-    container_name: caddy
-    restart: always
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - backend_net
-    depends_on:
-      - phpmyadmin
-      - rabbitmq
-
 volumes:
   mysql_data:
   rabbitmq_data:
-  caddy_data:
-  caddy_config:
 
 networks:
   backend_net:
