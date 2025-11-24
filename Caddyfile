@@ -1,0 +1,22 @@
+{
+  # Global options
+  # Use the internal CA for TLS to avoid external ACME validations in local dev
+  admin off
+}
+
+# HTTP 80 端口：直接代理 (不加密)
+:80 {
+    reverse_proxy host.docker.internal:3000
+}
+
+# HTTPS 443 端口：使用自簽證書並代理
+localhost:443 {
+    # 現在用自簽證書（瀏覽器會警告但加密有效）
+    tls internal
+    
+    # ←←← 未來有域名時改成這行（自動申請 Let’s Encrypt）
+    # tls your@email.com
+
+    # 關鍵：代理到宿主機的 Next.js 3000 端口
+    reverse_proxy host.docker.internal:3000
+}

@@ -27,44 +27,6 @@ services:
     networks:
       - backend_net
 
-  # MSSQL
-  mssql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: mssql_server
-    restart: always
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Evpe_123456"
-    ports:
-      - "1433:1433"
-    volumes:
-      - mssql_data:/var/opt/mssql
-    networks:
-      - backend_net
-
-  mssql-init:
-    image: mcr.microsoft.com/mssql-tools
-    container_name: mssql_init_runner
-    depends_on:
-      - mssql
-    volumes:
-      - ./init_dbo.sql:/init_dbo.sql:ro
-    entrypoint: /bin/bash
-    command: -c "until /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Evpe_123456' -Q 'SELECT 1' >/dev/null 2>&1; do echo 'waiting mssql...'; sleep 1; done; /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Evpe_123456' -i /init_dbo.sql"
-    restart: "no"
-    networks:
-      - backend_net
-
-  # Adminer
-  adminer:
-    image: adminer
-    container_name: adminer
-    restart: always
-    ports:
-      - "8080:8080"
-    networks:
-      - backend_net
-
   # RabbitMQ
   rabbitmq:
     image: rabbitmq:3-management
@@ -83,7 +45,6 @@ services:
 
 volumes:
   mysql_data:
-  mssql_data:
   rabbitmq_data:
 
 networks:

@@ -983,8 +983,55 @@ ON DUPLICATE KEY UPDATE
   `nickname` = VALUES(`nickname`),
   `status` = VALUES(`status`);
 
-
-/*!40101 SET character_set_client = @saved_cs_client */;
+--
+-- Table structure for table `user_invoices`
+--
+DROP TABLE IF EXISTS `user_invoices`;
+CREATE TABLE `user_invoices` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主鍵ID',
+  `invoice_number` VARCHAR(20) NOT NULL UNIQUE COMMENT '發票號碼',
+  `invoice_provider` VARCHAR(50) NOT NULL DEFAULT 'TAPPAY' COMMENT '發票供應商 (TAPPAY, STRIPE, OTHER)',
+  `provider_invoice_id` VARCHAR(100) COMMENT '供應商的發票識別碼 (用於追蹤供應商端)',
+  `user_id` VARCHAR(36) NOT NULL COMMENT '用戶UUID',
+  
+  -- 發票日期時間
+  `invoice_date` DATE NOT NULL COMMENT '發票開立日期',
+  `invoice_time` TIME DEFAULT NULL COMMENT '發票開立時間',
+  
+  -- 金額信息
+  `subtotal` DECIMAL(10,2) NOT NULL COMMENT '小計 (稅前)',
+  `tax_rate` DECIMAL(5,2) DEFAULT 0.00 COMMENT '稅率 (%)',
+  `tax_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '稅額',
+  `total_amount` DECIMAL(10,2) NOT NULL COMMENT '總金額 (含稅)',
+  `currency` VARCHAR(3) NOT NULL DEFAULT 'TWD' COMMENT '幣別',
+  
+  -- 狀態信息
+  `status` ENUM('DRAFT','ISSUED','SENT','PAID','OVERDUE','CANCELLED','ERROR') NOT NULL DEFAULT 'DRAFT' COMMENT '發票狀態',
+  `payment_status` ENUM('UNPAID','PARTIALLY_PAID','PAID') NOT NULL DEFAULT 'UNPAID' COMMENT '支付狀態',
+  
+  -- 支付信息
+  `payment_method` VARCHAR(50) DEFAULT NULL COMMENT '支付方式',
+  `payment_reference` VARCHAR(100) DEFAULT NULL COMMENT '支付參考號',
+  `sent_at` DATETIME DEFAULT NULL COMMENT '寄送時間',
+  `paid_at` DATETIME DEFAULT NULL COMMENT '支付時間',
+  
+  -- 備註
+  `description` TEXT COMMENT '發票描述/備註',
+  `error_message` VARCHAR(255) DEFAULT NULL COMMENT '錯誤訊息 (若狀態為 ERROR)',
+  
+  -- 時間戳
+  `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '建立時間',
+  `updatedAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新時間',
+  
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_invoice_number` (`invoice_number`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_invoice_date` (`invoice_date`),
+  KEY `idx_status` (`status`),
+  KEY `idx_payment_status` (`payment_status`),
+  KEY `idx_invoice_provider` (`invoice_provider`),
+  CONSTRAINT `fk_user_invoices_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用戶發票記錄表 (支持多家供應商)';
 
 
 /*!40101 SET character_set_client = @saved_cs_client */;
